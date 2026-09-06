@@ -357,7 +357,7 @@ function renderTabs(){
   el('nav-tabs').innerHTML = `
     <div class="nav-tab" data-tab="aziende">Aziende</div>
     <div class="nav-tab" data-tab="professionisti">Professionisti</div>
-    <div class="nav-tab" data-tab="calendario-lp">Liberi Professionisti</div>
+    <div class="nav-tab" data-tab="calendario-lp">Calendario Professionisti</div>
     ${adminTabs}`;
   el('nav-tabs').querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>goTab(t.dataset.tab)));
 }
