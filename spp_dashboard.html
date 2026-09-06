@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SistemaGESPP — Fullylife Solutions</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{--bg:#f4f5f7;--panel:#fff;--ink:#1d2733;--ink-soft:#5b6876;--line:#e2e6ea;--accent:#2f6f8f;--accent-ink:#1f4d63;--danger:#b3403a;--ok-bg:#e7f3ec;--ok-ink:#2f6b46;--radius:10px;--font:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif;--ui:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--ui);-webkit-font-smoothing:antialiased;min-height:100vh;}
+  .center-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;}
+  #login-view{width:100%;max-width:380px;padding:24px;}
+  .brand{text-align:center;margin-bottom:22px;}
+  .brand .mark{width:46px;height:46px;border-radius:11px;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:10px;}
+  .brand h1{font-family:var(--font);font-size:21px;margin:0;font-weight:600;}
+  .brand p{margin:2px 0 0;font-size:13px;color:var(--ink-soft);}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;}
+  label{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:5px;}
+  input,select,textarea{width:100%;padding:10px 12px;font-size:14px;font-family:var(--ui);border:1px solid var(--line);border-radius:7px;margin-bottom:14px;background:#fcfcfd;color:var(--ink);}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);}
+  button.primary{padding:11px 16px;font-size:14px;font-family:var(--ui);background:var(--accent);color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:500;}
+  button.primary:hover{background:var(--accent-ink);}
+  button.primary:disabled{opacity:.6;cursor:default;}
+  button.primary.full{width:100%;}
+  button.small{padding:6px 11px;font-size:13px;}
+  .msg{font-size:13px;margin-bottom:12px;padding:9px 11px;border-radius:7px;display:none;}
+  .msg.err{display:block;background:#f7e9e8;color:var(--danger);}
+  .foot-note{font-size:11px;color:var(--ink-soft);text-align:center;margin-top:16px;line-height:1.6;}
+  #app-view{display:none;max-width:820px;margin:0 auto;padding:24px;}
+  .topbar{display:flex;align-items:center;gap:12px;margin-bottom:22px;padding-bottom:16px;border-bottom:1px solid var(--line);}
+  .topbar .mark{width:38px;height:38px;border-radius:9px;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;}
+  .topbar .who{flex:1;}
+  .topbar .who .n{font-size:15px;font-weight:600;}
+  .topbar .who .r{font-size:13px;color:var(--ink-soft);}
+  .role-badge{font-size:12px;padding:4px 10px;border-radius:20px;background:#eef4f7;color:var(--accent-ink);font-weight:500;}
+  button.ghost{padding:8px 13px;font-size:13px;font-family:var(--ui);background:transparent;color:var(--ink-soft);border:1px solid var(--line);border-radius:7px;cursor:pointer;}
+  button.ghost:hover{background:#fff;color:var(--ink);}
+  button.ghost.danger{color:var(--danger);border-color:#e8d4d3;}
+  button.ghost.danger:hover{background:#f7e9e8;color:var(--danger);}
+  .nav-tabs{display:flex;gap:8px;margin-bottom:18px;}
+  .nav-tab{padding:8px 16px;font-size:14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);cursor:pointer;}
+  .nav-tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .crumbs{font-size:13px;color:var(--ink-soft);margin-bottom:14px;}
+  .crumbs a{color:var(--accent);cursor:pointer;text-decoration:none;}
+  .crumbs a:hover{text-decoration:underline;}
+  .back-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;font-size:13px;font-family:var(--ui);background:var(--panel);color:var(--ink-soft);border:1px solid var(--line);border-radius:7px;cursor:pointer;margin-bottom:14px;}
+  .back-btn:hover{background:#fff;color:var(--ink);}
+  .li-consultants{font-size:11px;color:var(--accent-ink);margin-top:3px;}
+  .li-consultants .none{color:var(--ink-soft);font-style:italic;}
+  .row-head{display:flex;align-items:center;margin-bottom:12px;}
+  .panel-title{font-family:var(--font);font-size:19px;margin:0;}
+  .panel-sub{font-size:13px;color:var(--ink-soft);margin:2px 0 0;}
+  .list{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .list-item{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);cursor:pointer;}
+  .list-item:last-child{border-bottom:none;}
+  .list-item:hover{background:#fafbfc;}
+  .li-ic{width:36px;height:36px;border-radius:8px;background:#eef4f7;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+  .li-av{width:34px;height:34px;border-radius:50%;background:#eef4f7;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--accent-ink);flex-shrink:0;}
+  .li-main{flex:1;}
+  .li-main .t{font-size:14px;font-weight:600;}
+  .li-main .d{font-size:12px;color:var(--ink-soft);}
+  .li-arrow{color:var(--ink-soft);}
+  .empty{padding:28px 16px;text-align:center;color:var(--ink-soft);font-size:13px;}
+  .section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;}
+  .section .sh{display:flex;align-items:center;margin-bottom:10px;}
+  .section .sh .st{font-size:15px;font-weight:600;flex:1;}
+  .sub-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);}
+  .sub-item:last-child{border-bottom:none;}
+  .sub-item .m{flex:1;font-size:14px;}
+  .sub-item .m .d{font-size:12px;color:var(--ink-soft);}
+  .tag-main{font-size:11px;padding:2px 8px;border-radius:12px;background:#eef4f7;color:var(--accent-ink);}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(20,30,40,.35);align-items:center;justify-content:center;padding:20px;z-index:10;}
+  .modal-bg.open{display:flex;}
+  .modal{background:var(--panel);border-radius:var(--radius);padding:22px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;}
+  .modal h3{font-family:var(--font);font-size:18px;margin:0 0 16px;}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:4px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;}
+  .assign-box{background:#f7f9fb;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:6px 0 14px;}
+  .assign-box .ttl{font-size:13px;color:var(--ink-soft);margin-bottom:8px;}
+  .chk-row{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;}
+  .chk-row input{width:auto;margin:0;}
+  .spinner{font-size:13px;color:var(--ink-soft);padding:20px;text-align:center;}
+</style>
+</head>
+<body>
+
+<div class="center-wrap" id="login-wrap">
+  <div id="login-view">
+    <div class="brand"><div class="mark">◐</div><h1>SistemaGESPP</h1><p>Fullylife Solutions</p></div>
+    <div class="card">
+      <div id="login-msg" class="msg"></div>
+      <label for="email">Email</label>
+      <input type="email" id="email" autocomplete="username" placeholder="nome@dominio.it">
+      <label for="password">Password</label>
+      <input type="password" id="password" autocomplete="current-password" placeholder="••••••••">
+      <button class="primary full" id="login-btn">Accedi</button>
+    </div>
+    <p class="foot-note">Accesso riservato. Ogni sessione e ogni accesso ai dati sanitari sono registrati.</p>
+  </div>
+</div>
+
+<div id="app-view">
+  <div class="topbar">
+    <div class="mark" id="home-btn" title="Home">◐</div>
+    <div class="who"><div class="n" id="who-name">—</div><div class="r" id="who-email">—</div></div>
+    <span class="role-badge" id="who-role">—</span>
+    <button class="ghost" id="logout-btn">Esci</button>
+  </div>
+  <div class="nav-tabs" id="nav-tabs"></div>
+  <div class="crumbs" id="crumbs"></div>
+  <div id="content"></div>
+</div>
+
+<!-- MODAL AZIENDA -->
+<div class="modal-bg" id="modal-company"><div class="modal">
+  <h3 id="mc-title">Nuova azienda</h3><div id="mc-msg" class="msg"></div>
+  <label>Ragione sociale *</label><input type="text" id="f-ragione">
+  <div class="grid2"><div><label>Partita IVA</label><input type="text" id="f-piva"></div><div><label>Codice fiscale</label><input type="text" id="f-cf"></div></div>
+  <label>Settore</label><input type="text" id="f-settore">
+  <label>Note</label><textarea id="f-note" rows="2"></textarea>
+  <div class="assign-box" id="assign-box" style="display:none;"><div class="ttl">Consulenti che gestiscono questa azienda</div><div id="assign-list"><div class="spinner">Caricamento…</div></div></div>
+  <div class="modal-actions"><button class="ghost" id="mc-cancel">Annulla</button><button class="primary" id="mc-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL SEDE -->
+<div class="modal-bg" id="modal-site"><div class="modal">
+  <h3 id="ms-title">Nuova sede</h3><div id="ms-msg" class="msg"></div>
+  <label>Nome sede *</label><input type="text" id="s-nome" placeholder="es. Sede operativa Milano">
+  <label>Indirizzo</label><input type="text" id="s-indirizzo">
+  <div class="grid2"><div><label>Città</label><input type="text" id="s-citta"></div><div><label>CAP</label><input type="text" id="s-cap"></div></div>
+  <label>Provincia</label><input type="text" id="s-prov">
+  <label class="chk-row" style="margin-bottom:14px;"><input type="checkbox" id="s-principale"> Sede principale</label>
+  <div class="modal-actions"><button class="ghost" id="ms-cancel">Annulla</button><button class="primary" id="ms-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL REFERENTE -->
+<div class="modal-bg" id="modal-contact"><div class="modal">
+  <h3 id="mr-title">Nuovo referente</h3><div id="mr-msg" class="msg"></div>
+  <div class="grid2"><div><label>Nome *</label><input type="text" id="r-nome"></div><div><label>Cognome *</label><input type="text" id="r-cognome"></div></div>
+  <label>Ruolo</label><input type="text" id="r-ruolo" placeholder="es. Responsabile HR">
+  <div class="grid2"><div><label>Email</label><input type="email" id="r-email"></div><div><label>Telefono</label><input type="text" id="r-tel"></div></div>
+  <div class="modal-actions"><button class="ghost" id="mr-cancel">Annulla</button><button class="primary" id="mr-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL PERSONA -->
+<div class="modal-bg" id="modal-person"><div class="modal">
+  <h3 id="mp-title">Nuova persona</h3><div id="mp-msg" class="msg"></div>
+  <div class="grid2"><div><label>Nome *</label><input type="text" id="p-nome"></div><div><label>Cognome *</label><input type="text" id="p-cognome"></div></div>
+  <div class="grid2"><div><label>Codice fiscale</label><input type="text" id="p-cf"></div><div><label>Data di nascita</label><input type="date" id="p-nascita"></div></div>
+  <div class="grid2"><div><label>Email</label><input type="email" id="p-email"></div><div><label>Telefono</label><input type="text" id="p-tel"></div></div>
+  <!-- campi dipendente (azienda) -->
+  <div id="emp-fields">
+    <label>Sede</label><select id="p-sede"></select>
+    <div class="grid2"><div><label>Reparto</label><input type="text" id="p-reparto"></div><div><label>Ruolo aziendale</label><input type="text" id="p-ruolo"></div></div>
+  </div>
+  <!-- campo professionista -->
+  <div id="prof-fields" style="display:none;">
+    <label>Professione</label><input type="text" id="p-professione">
+  </div>
+  <div class="modal-actions"><button class="ghost" id="mp-cancel">Annulla</button><button class="primary" id="mp-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL SPP -->
+<div class="modal-bg" id="modal-spp"><div class="modal">
+  <h3 id="msp-title">Nuova rilevazione SPP</h3>
+  <div id="msp-msg" class="msg"></div>
+  <label>Data rilevazione *</label>
+  <input type="date" id="spp-data">
+  <div class="grid2">
+    <div><label>1 · Sessualità / genere</label><select id="spp-a1"><option value="">—</option><option>Maschio</option><option>Femmina</option></select></div>
+    <div><label>2 · Lateralità</label><select id="spp-a2"><option value="">—</option><option>Destrimane</option><option>Mancino</option></select></div>
+  </div>
+  <div class="grid2">
+    <div><label>3 · Bisogni</label><select id="spp-a3"><option value="">—</option><option>Protezione</option><option>Identificazione</option><option>Spazialità</option></select></div>
+    <div><label>4 · Foglietto embrionale</label><select id="spp-a4"><option value="">—</option><option>Boccone</option><option>Attacco</option><option>Gratificazione</option><option>Socialità</option></select></div>
+  </div>
+  <div class="grid2">
+    <div><label>5 · Intensità</label><select id="spp-a5"><option value="">—</option><option>Inibizione</option><option>Attivazione</option></select></div>
+    <div><label>6 · Reciprocità</label><select id="spp-a6"><option value="">—</option><option>Prenditore</option><option>Prenditore/donatore</option><option>Donatore/prenditore</option><option>Donatore</option></select></div>
+  </div>
+  <label>Note</label>
+  <textarea id="spp-note" rows="2"></textarea>
+  <div class="modal-actions"><button class="ghost" id="msp-cancel">Annulla</button><button class="primary" id="msp-save">Salva rilevazione</button></div>
+</div></div>
+
+<!-- MODAL ASSEGNAZIONE PROFESSIONISTA (solo admin) -->
+<div class="modal-bg" id="modal-passign"><div class="modal">
+  <h3>Consulenti che gestiscono</h3>
+  <div id="pa-msg" class="msg"></div>
+  <div class="assign-box" style="margin-top:0;"><div class="ttl">Seleziona i consulenti</div><div id="pa-list"><div class="spinner">Caricamento…</div></div></div>
+  <div class="modal-actions"><button class="ghost" id="pa-cancel">Annulla</button><button class="primary" id="pa-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL CONSENSO SANITARIO -->
+<div class="modal-bg" id="modal-consent"><div class="modal">
+  <h3>Registra consenso sanitario</h3>
+  <div id="cons-msg" class="msg"></div>
+  <div class="grid2">
+    <div><label>Versione testo *</label><input type="text" id="cons-ver" value="v1.0"></div>
+    <div><label>Data consenso *</label><input type="date" id="cons-data"></div>
+  </div>
+  <label>Riferimento documento (opzionale)</label>
+  <input type="text" id="cons-doc" placeholder="es. nome file del modulo firmato">
+  <label class="chk-row" style="align-items:flex-start;margin-bottom:14px;line-height:1.5;">
+    <input type="checkbox" id="cons-chk" style="margin-top:3px;">
+    <span style="font-size:13px;color:var(--ink-soft);">Confermo che la persona ha ricevuto l'informativa, che il consenso è libero e separato, e che le è stato spiegato che può revocarlo in qualsiasi momento senza conseguenze sul percorso.</span>
+  </label>
+  <div class="modal-actions"><button class="ghost" id="cons-cancel">Annulla</button><button class="primary" id="cons-save">Registra consenso</button></div>
+</div></div>
+
+<!-- MODAL PATOLOGIA -->
+<div class="modal-bg" id="modal-patho"><div class="modal">
+  <h3>Aggiungi dato sanitario</h3>
+  <div id="pat-msg" class="msg"></div>
+  <label>Patologia (dal catalogo) *</label>
+  <div style="display:flex;gap:8px;align-items:flex-start;">
+    <select id="pat-sel" style="flex:1;"></select>
+    <button class="ghost small" id="pat-newtoggle" style="white-space:nowrap;margin-bottom:14px;">+ Nuova</button>
+  </div>
+  <!-- sotto-form per creare una nuova patologia nel catalogo -->
+  <div id="pat-newbox" style="display:none;background:#f7f9fb;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+    <label>Nuova patologia da aggiungere al catalogo</label>
+    <input type="text" id="pat-newname" placeholder="Denominazione">
+    <div id="pat-simwarn" style="display:none;font-size:12px;color:#8a6d3b;background:#f3f0e8;border-radius:6px;padding:8px 10px;margin-bottom:10px;"></div>
+    <div style="display:flex;gap:8px;"><button class="primary small" id="pat-newsave">Aggiungi al catalogo</button><button class="ghost small" id="pat-newcancel">Annulla</button></div>
+  </div>
+  <label>Data rilevazione</label>
+  <input type="date" id="pat-data">
+  <label>Self-report della persona</label>
+  <textarea id="pat-note" rows="2" placeholder="Condizione percepita nel tempo…"></textarea>
+  <p style="font-size:11px;color:var(--ink-soft);margin:0 0 12px;">Fonte: persona. Annotare la condizione percepita, non valutazioni cliniche.</p>
+  <div class="modal-actions"><button class="ghost" id="pat-cancel">Annulla</button><button class="primary" id="pat-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL INCONTRO -->
+<div class="modal-bg" id="modal-meeting"><div class="modal">
+  <h3 id="mm-title">Nuovo incontro</h3>
+  <div id="mm-msg" class="msg"></div>
+  <div class="grid2">
+    <div><label>Data e ora *</label><input type="datetime-local" id="m-dataora"></div>
+    <div><label>Durata (min)</label><input type="number" id="m-durata" placeholder="es. 60"></div>
+  </div>
+  <label>Sintesi</label>
+  <textarea id="m-sintesi" rows="3" placeholder="Temi affrontati e azioni…"></textarea>
+  <p style="font-size:11px;color:var(--ink-soft);margin:0 0 12px;">Annotare temi e azioni, non trascrizioni testuali dei colloqui.</p>
+  <div class="modal-actions"><button class="ghost" id="mm-cancel">Annulla</button><button class="primary" id="mm-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL SELF-REPORT -->
+<div class="modal-bg" id="modal-selfrep"><div class="modal">
+  <h3 id="sr-title">Nuova nota</h3>
+  <div id="sr-msg" class="msg"></div>
+  <div id="sr-context" style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;"></div>
+  <label>Data *</label>
+  <input type="date" id="sr-data">
+  <label>Condizione percepita / nota *</label>
+  <textarea id="sr-testo" rows="3" placeholder="Come riferisce di sentirsi…"></textarea>
+  <p style="font-size:11px;color:var(--ink-soft);margin:0 0 12px;">Fonte: persona. Self-report della condizione percepita nel tempo.</p>
+  <div class="modal-actions"><button class="ghost" id="sr-cancel">Annulla</button><button class="primary" id="sr-save">Salva</button></div>
+</div></div>
+
+<script>
+const SUPABASE_URL = "https://rronmtbpvhetoiddynmz.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyb25tdGJwdmhldG9pZGR5bm16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDA4NzEsImV4cCI6MjA5NjQxNjg3MX0.MVqdH3aTlXWukzZCbv171uaqiiF3n6wmK3KfYoitlpA";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const el = (id) => document.getElementById(id);
+const ROLE_LABEL = { admin:'Amministratore', consulente:'Consulente', consulente_limitato:'Consulente in formazione' };
+
+let ME=null, EDIT_COMPANY=null, CURRENT_COMPANY=null, EDIT_SITE=null, EDIT_CONTACT=null;
+let EDIT_PERSON=null, PERSON_MODE='dipendente'; // 'dipendente' | 'professionista'
+let TAB='aziende';
+
+// ---------- LOGIN ----------
+async function doLogin(){
+  const btn=el('login-btn'),msg=el('login-msg'); msg.className='msg'; btn.disabled=true; btn.textContent='Accesso in corso…';
+  const {error}=await sb.auth.signInWithPassword({email:el('email').value.trim(),password:el('password').value});
+  btn.disabled=false; btn.textContent='Accedi';
+  if(error){ msg.textContent='Credenziali non valide. Riprova.'; msg.className='msg err'; return; }
+  await loadSession();
+}
+async function loadSession(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session){ showLogin(); return; }
+  const {data:profile,error}=await sb.from('app_users').select('id,nome,cognome,email,ruolo,attivo').eq('id',session.user.id).single();
+  if(error||!profile){ return loginErr('Accesso autenticato ma profilo non configurato. Contatta l\'amministratore.'); }
+  if(!profile.attivo){ return loginErr('Account disattivato.'); }
+  ME=profile; showApp();
+}
+async function loginErr(t){ el('login-msg').textContent=t; el('login-msg').className='msg err'; await sb.auth.signOut(); showLogin(); }
+function showLogin(){ el('app-view').style.display='none'; el('login-wrap').style.display='flex'; }
+function showApp(){
+  el('login-wrap').style.display='none'; el('app-view').style.display='block';
+  el('who-name').textContent=`${ME.nome} ${ME.cognome}`; el('who-email').textContent=ME.email; el('who-role').textContent=ROLE_LABEL[ME.ruolo]||ME.ruolo;
+  renderTabs(); goTab('aziende');
+}
+async function doLogout(){ await sb.auth.signOut(); ME=null; el('email').value=''; el('password').value=''; showLogin(); }
+
+// ---------- TABS ----------
+function renderTabs(){
+  const adminTabs = ME.ruolo==='admin'
+    ? '<div class="nav-tab" data-tab="catalogo">Catalogo patologie</div><div class="nav-tab" data-tab="statistiche">Statistiche</div>'
+    : '';
+  el('nav-tabs').innerHTML = `
+    <div class="nav-tab" data-tab="aziende">Aziende</div>
+    <div class="nav-tab" data-tab="professionisti">Professionisti</div>
+    ${adminTabs}`;
+  el('nav-tabs').querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>goTab(t.dataset.tab)));
+}
+function goTab(tab){
+  TAB=tab; CURRENT_COMPANY=null;
+  el('nav-tabs').querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
+  if(tab==='aziende') viewCompanies();
+  else if(tab==='professionisti') viewProfessionals();
+  else if(tab==='catalogo') viewCatalogo();
+  else if(tab==='statistiche') viewStatistiche();
+}
+
+// ---------- ELENCO AZIENDE ----------
+async function viewCompanies(){
+  CURRENT_COMPANY=null; el('crumbs').innerHTML='Aziende';
+  const isAdmin=ME.ruolo==='admin';
+  el('content').innerHTML=`
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Aziende</h2>
+    <p class="panel-sub">${isAdmin?'Crea le aziende e assegnale ai consulenti.':'Le aziende a te assegnate.'}</p></div>
+    ${isAdmin?'<button class="primary" id="new-company">+ Nuova azienda</button>':''}</div>
+    <div class="list" id="company-list"><div class="spinner">Caricamento…</div></div>`;
+  if(isAdmin) el('new-company').addEventListener('click',()=>openCompanyModal(null));
+  const {data,error}=await sb.from('companies').select('id,ragione_sociale,partita_iva,settore').order('ragione_sociale');
+  const list=el('company-list');
+  if(error){ list.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data.length){ list.innerHTML=`<div class="empty">${isAdmin?'Nessuna azienda. Creane una.':'Nessuna azienda assegnata.'}</div>`; return; }
+
+  // per l'admin: carica le assegnazioni consulente-azienda per mostrarle in elenco
+  let assignMap={};
+  if(isAdmin){
+    const {data:cc}=await sb.from('consultant_company').select('company_id, app_users(nome,cognome)');
+    (cc||[]).forEach(r=>{
+      if(!assignMap[r.company_id]) assignMap[r.company_id]=[];
+      if(r.app_users) assignMap[r.company_id].push(r.app_users.nome+' '+r.app_users.cognome);
+    });
+  }
+
+  list.innerHTML=data.map(c=>{
+    const cons = isAdmin
+      ? `<div class="li-consultants">${(assignMap[c.id]&&assignMap[c.id].length)?'👤 '+assignMap[c.id].map(escapeHtml).join(', '):'<span class="none">nessun consulente assegnato</span>'}</div>`
+      : '';
+    return `<div class="list-item" data-id="${c.id}"><div class="li-ic">🏢</div>
+    <div class="li-main"><div class="t">${escapeHtml(c.ragione_sociale)}</div>
+    <div class="d">${[c.partita_iva?'P.IVA '+escapeHtml(c.partita_iva):'',escapeHtml(c.settore||'')].filter(Boolean).join(' · ')||'—'}</div>${cons}</div>
+    ${isAdmin?'<button class="ghost small edit-btn" data-id="'+c.id+'">Modifica</button> <button class="ghost small danger comp-del" data-id="'+c.id+'" data-nome="'+escapeHtml(c.ragione_sociale)+'">Elimina</button>':''}<span class="li-arrow">›</span></div>`;
+  }).join('');
+  list.querySelectorAll('.list-item').forEach(item=>item.addEventListener('click',e=>{ if(e.target.classList.contains('edit-btn')||e.target.classList.contains('comp-del'))return; enterCompany(item.dataset.id); }));
+  list.querySelectorAll('.edit-btn').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openCompanyModal(b.dataset.id); }));
+  list.querySelectorAll('.comp-del').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); delCompany(b.dataset.id,b.dataset.nome); }));
+}
+async function delCompany(id,nome){
+  // blocca se ci sono persone (anche archiviate) collegate
+  const {count}=await sb.from('persons').select('id',{count:'exact',head:true}).eq('company_id',id);
+  if(count && count>0){
+    alert('Impossibile eliminare "'+nome+'": contiene '+count+' persone.\n\nSposta o archivia prima le persone, poi potrai eliminare l\'azienda.');
+    return;
+  }
+  if(!confirm('Eliminare definitivamente l\'azienda "'+nome+'"?\n\nVerranno rimosse anche le sue sedi e i referenti. L\'operazione non è reversibile.')) return;
+  // rimuovi prima sedi/referenti/assegnazioni, poi l'azienda
+  await sb.from('company_sites').delete().eq('company_id',id);
+  await sb.from('company_contacts').delete().eq('company_id',id);
+  await sb.from('consultant_company').delete().eq('company_id',id);
+  const {error}=await sb.from('companies').delete().eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  viewCompanies();
+}
+
+// ---------- SCHEDA AZIENDA ----------
+async function enterCompany(id){
+  CURRENT_COMPANY=id;
+  const {data:c}=await sb.from('companies').select('ragione_sociale,partita_iva,settore').eq('id',id).single();
+  el('crumbs').innerHTML=`<a id="back-companies">Aziende</a> › ${escapeHtml(c?c.ragione_sociale:'')}`;
+  el('back-companies').addEventListener('click',()=>goTab('aziende'));
+  const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
+  el('content').innerHTML=`
+    <button class="back-btn" id="back-btn-top">← Aziende</button>
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">${escapeHtml(c?c.ragione_sociale:'Azienda')}</h2>
+    <p class="panel-sub">${[c&&c.partita_iva?'P.IVA '+escapeHtml(c.partita_iva):'',escapeHtml(c&&c.settore||'')].filter(Boolean).join(' · ')||'Dati azienda'}</p></div></div>
+    <div class="section"><div class="sh"><span class="st">Persone</span>${canWrite?'<button class="primary small" id="add-person">+ Persona</button>':''}</div><div id="persons-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section"><div class="sh"><span class="st">Sedi</span>${canWrite?'<button class="primary small" id="add-site">+ Sede</button>':''}</div><div id="sites-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section"><div class="sh"><span class="st">Referenti</span>${canWrite?'<button class="primary small" id="add-contact">+ Referente</button>':''}</div><div id="contacts-list"><div class="spinner">Caricamento…</div></div></div>`;
+  el('back-btn-top').addEventListener('click',()=>goTab('aziende'));
+  if(canWrite){
+    el('add-person').addEventListener('click',()=>openPersonModal(null,'dipendente'));
+    el('add-site').addEventListener('click',()=>openSiteModal(null));
+    el('add-contact').addEventListener('click',()=>openContactModal(null));
+  }
+  loadPersons(id,canWrite); loadSites(id,canWrite); loadContacts(id,canWrite);
+}
+
+// ---------- PERSONE (dipendenti dentro azienda) ----------
+async function loadPersons(companyId,canWrite){
+  const box=el('persons-list');
+  const {data,error}=await sb.from('persons').select('id,nome,cognome,reparto,ruolo_aziendale,site_id,archiviata').eq('company_id',companyId).order('archiviata').order('cognome');
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna persona inserita.</div>`; return; }
+  const visibili = SHOW_ARCH_PERS ? data : data.filter(p=>!p.archiviata);
+  if(!visibili.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna persona attiva. ${data.some(p=>p.archiviata)?'<a id="show-arch" style="color:var(--accent);cursor:pointer;">Mostra archiviate</a>':''}</div>`;
+    if(el('show-arch')) el('show-arch').addEventListener('click',()=>{SHOW_ARCH_PERS=true;loadPersons(companyId,canWrite);}); return; }
+  box.innerHTML=visibili.map(p=>`<div class="sub-item" style="cursor:pointer;${p.archiviata?'opacity:.55;':''}" data-id="${p.id}">
+    <div class="li-av">${initials(p.nome,p.cognome)}</div>
+    <div class="m"><div>${escapeHtml(p.nome+' '+p.cognome)} ${p.archiviata?'<span style="font-size:11px;color:var(--ink-soft);">(archiviata)</span>':''}</div>
+    <div class="d">${[escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||'')].filter(Boolean).join(' · ')||'—'}</div></div>
+    ${canWrite?'<button class="ghost small person-edit" data-id="'+p.id+'">Modifica</button> <button class="ghost small person-arch" data-id="'+p.id+'" data-a="'+(p.archiviata?'1':'0')+'" data-nome="'+escapeHtml(p.nome+' '+p.cognome)+'">'+(p.archiviata?'Ripristina':'Archivia')+'</button>':''}<span class="li-arrow">›</span></div>`).join('');
+  const arch=data.some(p=>p.archiviata);
+  if(arch && !SHOW_ARCH_PERS) box.insertAdjacentHTML('beforeend',`<div style="padding:8px 16px;"><a id="show-arch" style="color:var(--accent);cursor:pointer;font-size:13px;">Mostra archiviate</a></div>`);
+  if(arch && SHOW_ARCH_PERS) box.insertAdjacentHTML('beforeend',`<div style="padding:8px 16px;"><a id="hide-arch" style="color:var(--accent);cursor:pointer;font-size:13px;">Nascondi archiviate</a></div>`);
+  box.querySelectorAll('.sub-item').forEach(it=>it.addEventListener('click',e=>{ if(e.target.classList.contains('person-edit')||e.target.classList.contains('person-arch'))return; openPersonCard(it.dataset.id); }));
+  if(canWrite){
+    box.querySelectorAll('.person-edit').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openPersonModal(b.dataset.id,'dipendente'); }));
+    box.querySelectorAll('.person-arch').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); archivePerson(b.dataset.id,b.dataset.a==='1',b.dataset.nome,()=>loadPersons(companyId,canWrite)); }));
+  }
+  if(el('show-arch')) el('show-arch').addEventListener('click',()=>{SHOW_ARCH_PERS=true;loadPersons(companyId,canWrite);});
+  if(el('hide-arch')) el('hide-arch').addEventListener('click',()=>{SHOW_ARCH_PERS=false;loadPersons(companyId,canWrite);});
+}
+let SHOW_ARCH_PERS=false;
+async function archivePerson(id, isArchived, nome, reload){
+  if(!isArchived){
+    if(!confirm('Archiviare "'+nome+'"?\n\nLa persona verrà nascosta dagli elenchi ma il suo storico (SPP, dati sanitari, incontri) resta conservato e recuperabile. Potrai ripristinarla.')) return;
+  }
+  const {error}=await sb.from('persons').update({archiviata:!isArchived}).eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  reload();
+}
+
+// ---------- PROFESSIONISTI ----------
+async function viewProfessionals(){
+  el('crumbs').innerHTML='Professionisti';
+  const isAdmin=ME.ruolo==='admin';
+  el('content').innerHTML=`
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Professionisti</h2>
+    <p class="panel-sub">Persone indipendenti, non legate a un'azienda.</p></div>
+    ${isAdmin?'<button class="primary" id="new-prof">+ Nuovo professionista</button>':''}</div>
+    <div class="list" id="prof-list"><div class="spinner">Caricamento…</div></div>`;
+  if(isAdmin) el('new-prof').addEventListener('click',()=>openPersonModal(null,'professionista'));
+  const {data,error}=await sb.from('persons').select('id,nome,cognome,professione,archiviata').eq('tipo','professionista').order('archiviata').order('cognome');
+  const list=el('prof-list');
+  if(error){ list.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data.length){ list.innerHTML=`<div class="empty">Nessun professionista. ${isAdmin?'Creane uno.':''}</div>`; return; }
+
+  let assignMap={};
+  if(isAdmin){
+    const {data:cp}=await sb.from('consultant_person').select('person_id, app_users(nome,cognome)');
+    (cp||[]).forEach(r=>{
+      if(!assignMap[r.person_id]) assignMap[r.person_id]=[];
+      if(r.app_users) assignMap[r.person_id].push(r.app_users.nome+' '+r.app_users.cognome);
+    });
+  }
+
+  const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
+  const visibili = SHOW_ARCH_PROF ? data : data.filter(p=>!p.archiviata);
+  list.innerHTML=visibili.map(p=>{
+    const cons = isAdmin
+      ? `<div class="li-consultants">${(assignMap[p.id]&&assignMap[p.id].length)?'👤 '+assignMap[p.id].map(escapeHtml).join(', '):'<span class="none">nessun consulente assegnato</span>'}</div>`
+      : '';
+    return `<div class="list-item" data-id="${p.id}" style="${p.archiviata?'opacity:.55;':''}"><div class="li-av">${initials(p.nome,p.cognome)}</div>
+    <div class="li-main"><div class="t">${escapeHtml(p.nome+' '+p.cognome)} ${p.archiviata?'<span style="font-size:11px;color:var(--ink-soft);">(archiviato)</span>':''}</div><div class="d">${escapeHtml(p.professione||'—')}</div>${cons}</div>
+    ${canWrite?'<button class="ghost small prof-edit" data-id="'+p.id+'">Modifica</button> <button class="ghost small prof-arch" data-id="'+p.id+'" data-a="'+(p.archiviata?'1':'0')+'" data-nome="'+escapeHtml(p.nome+' '+p.cognome)+'">'+(p.archiviata?'Ripristina':'Archivia')+'</button>':''}<span class="li-arrow">›</span></div>`;
+  }).join('');
+  const arch=data.some(p=>p.archiviata);
+  if(arch) list.insertAdjacentHTML('beforeend',`<div style="padding:8px 16px;"><a id="toggle-arch-prof" style="color:var(--accent);cursor:pointer;font-size:13px;">${SHOW_ARCH_PROF?'Nascondi':'Mostra'} archiviati</a></div>`);
+  list.querySelectorAll('.list-item').forEach(it=>it.addEventListener('click',e=>{ if(e.target.classList.contains('prof-edit')||e.target.classList.contains('prof-arch'))return; openPersonCard(it.dataset.id); }));
+  if(canWrite){
+    list.querySelectorAll('.prof-edit').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openPersonModal(b.dataset.id,'professionista'); }));
+    list.querySelectorAll('.prof-arch').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); archivePerson(b.dataset.id,b.dataset.a==='1',b.dataset.nome,viewProfessionals); }));
+  }
+  if(el('toggle-arch-prof')) el('toggle-arch-prof').addEventListener('click',()=>{SHOW_ARCH_PROF=!SHOW_ARCH_PROF;viewProfessionals();});
+}
+let SHOW_ARCH_PROF=false;
+
+// ---------- SCHEDA PERSONA ----------
+let CURRENT_PERSON=null, CURRENT_PERSON_OBJ=null;
+async function openPersonCard(id){
+  const {data:p}=await sb.from('persons').select('nome,cognome,tipo,reparto,ruolo_aziendale,professione,company_id').eq('id',id).single();
+  CURRENT_PERSON=id; CURRENT_PERSON_OBJ=p;
+  let back = TAB==='professionisti'
+    ? `<a id="back-x">Professionisti</a>`
+    : `<a id="back-x">Aziende</a> › <a id="back-comp">azienda</a>`;
+  el('crumbs').innerHTML = `${back} › ${escapeHtml(p?p.nome+' '+p.cognome:'')}`;
+  if(TAB==='professionisti'){ el('back-x').addEventListener('click',()=>goTab('professionisti')); }
+  else { el('back-x').addEventListener('click',()=>goTab('aziende')); el('back-comp').addEventListener('click',()=>enterCompany(p.company_id)); }
+  const dett = p.tipo==='professionista' ? escapeHtml(p.professione||'Professionista')
+    : [escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||'')].filter(Boolean).join(' · ')||'Dipendente';
+  const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
+  const isAdmin=ME.ruolo==='admin';
+  const backLabel = TAB==='professionisti' ? '← Professionisti' : '← Azienda';
+  el('content').innerHTML=`
+    <button class="back-btn" id="back-btn-top">${backLabel}</button>
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">${escapeHtml(p.nome+' '+p.cognome)}</h2><p class="panel-sub">${dett}</p></div>
+      ${(isAdmin && p.tipo==='professionista')?'<button class="ghost small" id="passign-btn">Consulenti</button>':''}</div>
+    <div class="section">
+      <div class="sh"><span class="st">Struttura psicofisiologica (SPP)</span>
+        <select id="spp-sel" style="width:auto;margin:0 8px 0 0;display:none;"></select>
+        ${canWrite?'<button class="primary small" id="spp-new">+ Nuova verifica</button>':''}</div>
+      <div id="spp-body"><div class="spinner">Caricamento…</div></div>
+    </div>
+    <div class="section" id="health-section">
+      <div class="sh"><span class="st">Dati sanitari</span><span id="health-tag" style="margin-left:8px;"></span>
+        <span style="flex:1;"></span><span id="health-actions"></span></div>
+      <div id="health-body"><div class="spinner">Caricamento…</div></div>
+    </div>
+    <div class="section">
+      <div class="sh"><span class="st">Incontri</span>${canWrite?'<button class="primary small" id="meet-new">+ Incontro</button>':''}</div>
+      <div id="meet-body"><div class="spinner">Caricamento…</div></div>
+    </div>`;
+  el('back-btn-top').addEventListener('click', ()=>{ if(TAB==='professionisti') goTab('professionisti'); else enterCompany(p.company_id); });
+  if(canWrite) el('spp-new').addEventListener('click', ()=>openSppModal());
+  if(isAdmin && p.tipo==='professionista') el('passign-btn').addEventListener('click', ()=>openProfAssign(id));
+  loadSpp(id);
+  loadHealth(id);
+  loadMeetings(id);
+  if(canWrite) el('meet-new').addEventListener('click', ()=>openMeetingModal());
+}
+
+let SPP_ROWS=[];
+async function loadSpp(personId){
+  const body=el('spp-body'), sel=el('spp-sel');
+  const {data,error}=await sb.from('spp_profiles')
+    .select('id,data_rilevazione,asse1_sessualita,asse2_lateralita,asse3_bisogni,asse4_foglietto,asse5_intensita,asse6_reciprocita,note')
+    .eq('person_id',personId).order('data_rilevazione',{ascending:false});
+  if(error){ body.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; sel.style.display='none'; return; }
+  SPP_ROWS=data||[];
+  if(!SPP_ROWS.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessuna rilevazione. ${(ME.ruolo!=='consulente_limitato')?'Creane una con "+ Nuova verifica".':''}</div>`; sel.style.display='none'; return; }
+  // selettore rilevazioni
+  sel.style.display='inline-block';
+  sel.innerHTML = SPP_ROWS.map((r,i)=>`<option value="${r.id}">${fmtDate(r.data_rilevazione)}${i===0?' — ultima':''}</option>`).join('');
+  sel.onchange=()=>renderSppDetail(sel.value);
+  renderSppDetail(SPP_ROWS[0].id);
+}
+function renderSppDetail(id){
+  const r=SPP_ROWS.find(x=>x.id===id); if(!r) return;
+  const row=(lab,val)=>`<div class="sub-item"><div class="m"><div class="d">${lab}</div><div>${val?escapeHtml(val):'<span style="color:var(--ink-soft)">—</span>'}</div></div></div>`;
+  el('spp-body').innerHTML = `
+    ${row('1 · Sessualità / genere', r.asse1_sessualita)}
+    ${row('2 · Lateralità', r.asse2_lateralita)}
+    ${row('3 · Bisogni', r.asse3_bisogni)}
+    ${row('4 · Foglietto embrionale', r.asse4_foglietto)}
+    ${row('5 · Intensità', r.asse5_intensita)}
+    ${row('6 · Reciprocità', r.asse6_reciprocita)}
+    ${r.note?`<div class="sub-item"><div class="m"><div class="d">Note</div><div>${escapeHtml(r.note)}</div></div></div>`:''}`;
+}
+
+// crea nuova rilevazione, precompilata con l'ultima (verifica nel tempo)
+function openSppModal(){
+  el('msp-msg').className='msg';
+  el('msp-title').textContent='Nuova rilevazione SPP';
+  const last = SPP_ROWS.length ? SPP_ROWS[0] : null;
+  el('spp-data').value = new Date().toISOString().slice(0,10);
+  el('spp-a1').value = last?last.asse1_sessualita||'':'';
+  el('spp-a2').value = last?last.asse2_lateralita||'':'';
+  el('spp-a3').value = last?last.asse3_bisogni||'':'';
+  el('spp-a4').value = last?last.asse4_foglietto||'':'';
+  el('spp-a5').value = last?last.asse5_intensita||'':'';
+  el('spp-a6').value = last?last.asse6_reciprocita||'':'';
+  el('spp-note').value = '';
+  el('modal-spp').classList.add('open');
+}
+async function saveSpp(){
+  const msg=el('msp-msg'); msg.className='msg';
+  if(!el('spp-data').value){ msg.textContent='La data è obbligatoria.'; msg.className='msg err'; return; }
+  const payload={
+    person_id:CURRENT_PERSON, consultant_id:ME.id,
+    data_rilevazione:el('spp-data').value,
+    asse1_sessualita:el('spp-a1').value||null,
+    asse2_lateralita:el('spp-a2').value||null,
+    asse3_bisogni:el('spp-a3').value||null,
+    asse4_foglietto:el('spp-a4').value||null,
+    asse5_intensita:el('spp-a5').value||null,
+    asse6_reciprocita:el('spp-a6').value||null,
+    note:el('spp-note').value.trim()||null
+  };
+  const btn=el('msp-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const {error}=await sb.from('spp_profiles').insert(payload);
+  btn.disabled=false; btn.textContent='Salva rilevazione';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  el('modal-spp').classList.remove('open');
+  loadSpp(CURRENT_PERSON);
+}
+function fmtDate(d){ if(!d)return''; const p=d.split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d; }
+
+// ---------- MODAL PERSONA ----------
+async function openPersonModal(id, mode){
+  EDIT_PERSON=id; PERSON_MODE=mode; el('mp-msg').className='msg';
+  el('mp-title').textContent = (id?'Modifica ':'Nuova ') + (mode==='professionista'?'professionista':'persona');
+  ['p-nome','p-cognome','p-cf','p-nascita','p-email','p-tel','p-reparto','p-ruolo','p-professione'].forEach(f=>el(f).value='');
+  // mostra i campi giusti
+  el('emp-fields').style.display = mode==='dipendente' ? 'block' : 'none';
+  el('prof-fields').style.display = mode==='professionista' ? 'block' : 'none';
+  // popola sedi se dipendente
+  if(mode==='dipendente'){
+    const {data:sites}=await sb.from('company_sites').select('id,nome_sede,principale').eq('company_id',CURRENT_COMPANY).order('principale',{ascending:false}).order('nome_sede');
+    el('p-sede').innerHTML = '<option value="">— nessuna —</option>' + (sites||[]).map(s=>`<option value="${s.id}">${escapeHtml(s.nome_sede)}${s.principale?' (principale)':''}</option>`).join('');
+  }
+  if(id){
+    const {data:p}=await sb.from('persons').select('nome,cognome,codice_fiscale,data_nascita,email,telefono,reparto,ruolo_aziendale,professione,site_id').eq('id',id).single();
+    if(p){
+      el('p-nome').value=p.nome||''; el('p-cognome').value=p.cognome||''; el('p-cf').value=p.codice_fiscale||'';
+      el('p-nascita').value=p.data_nascita||''; el('p-email').value=p.email||''; el('p-tel').value=p.telefono||'';
+      el('p-reparto').value=p.reparto||''; el('p-ruolo').value=p.ruolo_aziendale||''; el('p-professione').value=p.professione||'';
+      if(mode==='dipendente' && p.site_id) el('p-sede').value=p.site_id;
+    }
+  }
+  el('modal-person').classList.add('open');
+}
+async function savePerson(){
+  const msg=el('mp-msg'); msg.className='msg';
+  const nome=el('p-nome').value.trim(), cognome=el('p-cognome').value.trim();
+  if(!nome||!cognome){ msg.textContent='Nome e cognome sono obbligatori.'; msg.className='msg err'; return; }
+  const base={
+    nome, cognome,
+    codice_fiscale:el('p-cf').value.trim()||null,
+    data_nascita:el('p-nascita').value||null,
+    email:el('p-email').value.trim()||null,
+    telefono:el('p-tel').value.trim()||null
+  };
+  let payload;
+  if(PERSON_MODE==='dipendente'){
+    payload={...base, tipo:'dipendente', company_id:CURRENT_COMPANY,
+      site_id:el('p-sede').value||null, reparto:el('p-reparto').value.trim()||null,
+      ruolo_aziendale:el('p-ruolo').value.trim()||null, professione:null};
+  } else {
+    payload={...base, tipo:'professionista', company_id:null, site_id:null,
+      reparto:null, ruolo_aziendale:null, professione:el('p-professione').value.trim()||null};
+  }
+  const btn=el('mp-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  let err;
+  if(EDIT_PERSON){ ({error:err}=await sb.from('persons').update(payload).eq('id',EDIT_PERSON)); }
+  else { ({error:err}=await sb.from('persons').insert(payload)); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  el('modal-person').classList.remove('open'); EDIT_PERSON=null;
+  if(PERSON_MODE==='dipendente') loadPersons(CURRENT_COMPANY,true); else viewProfessionals();
+}
+
+// ---------- MODAL AZIENDA ----------
+async function openCompanyModal(id){
+  EDIT_COMPANY=id; el('mc-msg').className='msg'; el('mc-title').textContent=id?'Modifica azienda':'Nuova azienda';
+  ['f-ragione','f-piva','f-cf','f-settore','f-note'].forEach(f=>el(f).value='');
+  if(id){ const {data:c}=await sb.from('companies').select('ragione_sociale,partita_iva,codice_fiscale,settore,note').eq('id',id).single();
+    if(c){ el('f-ragione').value=c.ragione_sociale||''; el('f-piva').value=c.partita_iva||''; el('f-cf').value=c.codice_fiscale||''; el('f-settore').value=c.settore||''; el('f-note').value=c.note||''; } }
+  el('assign-box').style.display='block'; await loadAssignBox(id);
+  el('modal-company').classList.add('open');
+}
+async function loadAssignBox(companyId){
+  const box=el('assign-list');
+  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('cognome');
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!users.length){ box.innerHTML=`<div style="font-size:13px;color:var(--ink-soft);">Nessun consulente disponibile.</div>`; return; }
+  let assigned=new Set();
+  if(companyId){ const {data:cc}=await sb.from('consultant_company').select('consultant_id').eq('company_id',companyId); (cc||[]).forEach(r=>assigned.add(r.consultant_id)); }
+  box.innerHTML=users.map(u=>`<label class="chk-row"><input type="checkbox" class="assign-chk" value="${u.id}" ${assigned.has(u.id)?'checked':''}> ${escapeHtml(u.nome+' '+u.cognome)} <span style="color:var(--ink-soft);font-size:12px;">(${ROLE_LABEL[u.ruolo]})</span></label>`).join('');
+}
+async function saveCompany(){
+  const msg=el('mc-msg'); msg.className='msg'; const ragione=el('f-ragione').value.trim();
+  if(!ragione){ msg.textContent='La ragione sociale è obbligatoria.'; msg.className='msg err'; return; }
+  const payload={ragione_sociale:ragione,partita_iva:el('f-piva').value.trim()||null,codice_fiscale:el('f-cf').value.trim()||null,settore:el('f-settore').value.trim()||null,note:el('f-note').value.trim()||null};
+  const btn=el('mc-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  let companyId=EDIT_COMPANY,err;
+  if(EDIT_COMPANY){ ({error:err}=await sb.from('companies').update(payload).eq('id',EDIT_COMPANY)); }
+  else { const {data,error}=await sb.from('companies').insert(payload).select('id').single(); err=error; if(data)companyId=data.id; }
+  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; btn.disabled=false; btn.textContent='Salva'; return; }
+  const checked=Array.from(document.querySelectorAll('.assign-chk:checked')).map(c=>c.value);
+  await sb.from('consultant_company').delete().eq('company_id',companyId);
+  if(checked.length) await sb.from('consultant_company').insert(checked.map(cid=>({company_id:companyId,consultant_id:cid})));
+  btn.disabled=false; btn.textContent='Salva'; el('modal-company').classList.remove('open'); EDIT_COMPANY=null; viewCompanies();
+}
+
+// ---------- MODAL SEDE ----------
+async function openSiteModal(id){
+  EDIT_SITE=id; el('ms-msg').className='msg'; el('ms-title').textContent=id?'Modifica sede':'Nuova sede';
+  ['s-nome','s-indirizzo','s-citta','s-cap','s-prov'].forEach(f=>el(f).value=''); el('s-principale').checked=false;
+  if(id){ const {data:s}=await sb.from('company_sites').select('nome_sede,indirizzo,citta,cap,provincia,principale').eq('id',id).single();
+    if(s){ el('s-nome').value=s.nome_sede||''; el('s-indirizzo').value=s.indirizzo||''; el('s-citta').value=s.citta||''; el('s-cap').value=s.cap||''; el('s-prov').value=s.provincia||''; el('s-principale').checked=!!s.principale; } }
+  el('modal-site').classList.add('open');
+}
+async function saveSite(){
+  const msg=el('ms-msg'); msg.className='msg'; const nome=el('s-nome').value.trim();
+  if(!nome){ msg.textContent='Il nome sede è obbligatorio.'; msg.className='msg err'; return; }
+  const principale=el('s-principale').checked;
+  const payload={company_id:CURRENT_COMPANY,nome_sede:nome,indirizzo:el('s-indirizzo').value.trim()||null,citta:el('s-citta').value.trim()||null,cap:el('s-cap').value.trim()||null,provincia:el('s-prov').value.trim()||null,principale};
+  const btn=el('ms-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  if(principale){ await sb.from('company_sites').update({principale:false}).eq('company_id',CURRENT_COMPANY); }
+  let err;
+  if(EDIT_SITE){ ({error:err}=await sb.from('company_sites').update(payload).eq('id',EDIT_SITE)); } else { ({error:err}=await sb.from('company_sites').insert(payload)); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  el('modal-site').classList.remove('open'); EDIT_SITE=null; loadSites(CURRENT_COMPANY,true);
+}
+
+// ---------- MODAL REFERENTE ----------
+async function openContactModal(id){
+  EDIT_CONTACT=id; el('mr-msg').className='msg'; el('mr-title').textContent=id?'Modifica referente':'Nuovo referente';
+  ['r-nome','r-cognome','r-ruolo','r-email','r-tel'].forEach(f=>el(f).value='');
+  if(id){ const {data:c}=await sb.from('company_contacts').select('nome,cognome,ruolo,email,telefono').eq('id',id).single();
+    if(c){ el('r-nome').value=c.nome||''; el('r-cognome').value=c.cognome||''; el('r-ruolo').value=c.ruolo||''; el('r-email').value=c.email||''; el('r-tel').value=c.telefono||''; } }
+  el('modal-contact').classList.add('open');
+}
+async function saveContact(){
+  const msg=el('mr-msg'); msg.className='msg'; const nome=el('r-nome').value.trim(),cognome=el('r-cognome').value.trim();
+  if(!nome||!cognome){ msg.textContent='Nome e cognome sono obbligatori.'; msg.className='msg err'; return; }
+  const payload={company_id:CURRENT_COMPANY,nome,cognome,ruolo:el('r-ruolo').value.trim()||null,email:el('r-email').value.trim()||null,telefono:el('r-tel').value.trim()||null};
+  const btn=el('mr-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  let err;
+  if(EDIT_CONTACT){ ({error:err}=await sb.from('company_contacts').update(payload).eq('id',EDIT_CONTACT)); } else { ({error:err}=await sb.from('company_contacts').insert(payload)); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  el('modal-contact').classList.remove('open'); EDIT_CONTACT=null; loadContacts(CURRENT_COMPANY,true);
+}
+
+async function loadSites(companyId,canWrite){
+  const box=el('sites-list');
+  const {data,error}=await sb.from('company_sites').select('id,nome_sede,indirizzo,citta,cap,provincia,principale').eq('company_id',companyId).order('principale',{ascending:false}).order('nome_sede');
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna sede inserita.</div>`; return; }
+  box.innerHTML=data.map(s=>`<div class="sub-item"><div class="m"><div>${escapeHtml(s.nome_sede)} ${s.principale?'<span class="tag-main">principale</span>':''}</div>
+    <div class="d">${[escapeHtml(s.indirizzo||''),escapeHtml(s.citta||''),escapeHtml(s.cap||''),escapeHtml(s.provincia||'')].filter(Boolean).join(', ')||'—'}</div></div>
+    ${canWrite?'<button class="ghost small site-edit" data-id="'+s.id+'">Modifica</button> <button class="ghost small danger site-del" data-id="'+s.id+'" data-nome="'+escapeHtml(s.nome_sede)+'">Elimina</button>':''}</div>`).join('');
+  if(canWrite){
+    box.querySelectorAll('.site-edit').forEach(b=>b.addEventListener('click',()=>openSiteModal(b.dataset.id)));
+    box.querySelectorAll('.site-del').forEach(b=>b.addEventListener('click',()=>delSite(b.dataset.id,b.dataset.nome)));
+  }
+}
+async function loadContacts(companyId,canWrite){
+  const box=el('contacts-list');
+  const {data,error}=await sb.from('company_contacts').select('id,nome,cognome,ruolo,email,telefono').eq('company_id',companyId).order('cognome');
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun referente inserito.</div>`; return; }
+  box.innerHTML=data.map(c=>`<div class="sub-item"><div class="m"><div>${escapeHtml(c.nome+' '+c.cognome)} ${c.ruolo?'<span style="color:var(--ink-soft);font-size:12px;">· '+escapeHtml(c.ruolo)+'</span>':''}</div>
+    <div class="d">${[escapeHtml(c.email||''),escapeHtml(c.telefono||'')].filter(Boolean).join(' · ')||'—'}</div></div>
+    ${canWrite?'<button class="ghost small contact-edit" data-id="'+c.id+'">Modifica</button> <button class="ghost small danger contact-del" data-id="'+c.id+'" data-nome="'+escapeHtml(c.nome+' '+c.cognome)+'">Elimina</button>':''}</div>`).join('');
+  if(canWrite){
+    box.querySelectorAll('.contact-edit').forEach(b=>b.addEventListener('click',()=>openContactModal(b.dataset.id)));
+    box.querySelectorAll('.contact-del').forEach(b=>b.addEventListener('click',()=>delContact(b.dataset.id,b.dataset.nome)));
+  }
+}
+
+// ---------- ASSEGNAZIONE PROFESSIONISTA -> CONSULENTI (solo admin) ----------
+let PASSIGN_PERSON=null;
+async function openProfAssign(personId){
+  PASSIGN_PERSON=personId; el('pa-msg').className='msg';
+  const box=el('pa-list');
+  el('modal-passign').classList.add('open');
+  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('cognome');
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!users.length){ box.innerHTML=`<div style="font-size:13px;color:var(--ink-soft);">Nessun consulente disponibile.</div>`; return; }
+  let assigned=new Set();
+  const {data:cp}=await sb.from('consultant_person').select('consultant_id').eq('person_id',personId);
+  (cp||[]).forEach(r=>assigned.add(r.consultant_id));
+  box.innerHTML=users.map(u=>`<label class="chk-row"><input type="checkbox" class="pa-chk" value="${u.id}" ${assigned.has(u.id)?'checked':''}> ${escapeHtml(u.nome+' '+u.cognome)} <span style="color:var(--ink-soft);font-size:12px;">(${ROLE_LABEL[u.ruolo]})</span></label>`).join('');
+}
+async function saveProfAssign(){
+  const msg=el('pa-msg'); msg.className='msg';
+  const checked=Array.from(document.querySelectorAll('.pa-chk:checked')).map(c=>c.value);
+  const btn=el('pa-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const {error:e1}=await sb.from('consultant_person').delete().eq('person_id',PASSIGN_PERSON);
+  let e2=null;
+  if(checked.length){ ({error:e2}=await sb.from('consultant_person').insert(checked.map(cid=>({person_id:PASSIGN_PERSON,consultant_id:cid})))); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(e1||e2){ msg.textContent='Errore: '+((e1||e2).message); msg.className='msg err'; return; }
+  el('modal-passign').classList.remove('open');
+}
+
+// ---------- DATI SANITARI ----------
+// Il consulente_limitato non vede nulla di sanitario.
+async function loadHealth(personId){
+  const body=el('health-body'), tag=el('health-tag'), actions=el('health-actions');
+  if(ME.ruolo==='consulente_limitato'){
+    tag.innerHTML=''; actions.innerHTML='';
+    body.innerHTML=`<div class="empty">Sezione non disponibile in formazione.</div>`;
+    return;
+  }
+  const canWrite = ME.ruolo==='admin'||ME.ruolo==='consulente';
+  // 1) verifica consenso attivo
+  const {data:consents,error:cErr}=await sb.from('health_consents')
+    .select('id,testo_versione,data_consenso,stato').eq('person_id',personId).order('data_consenso',{ascending:false});
+  if(cErr){ body.innerHTML=`<div class="empty">Errore: ${cErr.message}</div>`; return; }
+  const active=(consents||[]).find(c=>c.stato==='attivo');
+
+  if(!active){
+    tag.innerHTML='<span style="font-size:11px;padding:3px 9px;border-radius:12px;background:#f3f0e8;color:#8a6d3b;">nessun consenso attivo</span>';
+    actions.innerHTML = canWrite ? '<button class="primary small" id="cons-add">Registra consenso</button>' : '';
+    body.innerHTML=`<div class="empty">Per inserire dati sanitari serve prima il consenso attivo della persona.</div>`;
+    if(canWrite) el('cons-add').addEventListener('click',()=>openConsentModal(personId));
+    return;
+  }
+
+  // consenso attivo -> mostra stato + azioni
+  tag.innerHTML=`<span style="font-size:11px;padding:3px 9px;border-radius:12px;background:var(--ok-bg);color:var(--ok-ink);">consenso attivo · ${escapeHtml(active.testo_versione)}</span>`;
+  actions.innerHTML = canWrite
+    ? `<button class="ghost small" id="cons-revoke">Revoca consenso</button> <button class="primary small" id="patho-add">+ Patologia</button>`
+    : '';
+  if(canWrite){
+    el('cons-revoke').addEventListener('click',()=>revokeConsent(active.id,personId));
+    el('patho-add').addEventListener('click',()=>openPathoModal(personId));
+  }
+
+  // 2) LETTURA TRACCIATA: usa la funzione RPC che registra l'accesso nell'audit
+  const {data:records,error:rErr}=await sb.rpc('get_health_records',{p_person_id:personId});
+  if(rErr){ body.innerHTML=`<div class="empty">Errore lettura dati sanitari: ${rErr.message}</div>`; return; }
+
+  // carica anche le note di self-report (lettura tracciata)
+  const {data:allNotes}=await sb.rpc('get_self_reports',{p_person_id:personId});
+  SELFREP_ALL = allNotes||[];
+
+  if(!records||!records.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessun dato sanitario. Aggiungine con "+ Patologia".</div>`; }
+  else {
+    const patIds=[...new Set(records.map(r=>r.pathology_id).filter(Boolean))];
+    let patName={};
+    if(patIds.length){
+      const {data:pats}=await sb.from('pathologies').select('id,denominazione').in('id',patIds);
+      (pats||[]).forEach(p=>patName[p.id]=p.denominazione);
+    }
+    body.innerHTML=records.map(r=>{
+      const notes = SELFREP_ALL.filter(n=>n.health_record_id===r.id);
+      const notesHtml = notes.length
+        ? notes.map(n=>`<div style="display:flex;align-items:center;font-size:12px;color:var(--ink-soft);padding:4px 0 4px 12px;border-left:2px solid var(--line);margin:4px 0 4px 4px;">
+            <span style="flex:1;">${fmtDate(n.data_nota)} — ${escapeHtml(n.testo)}</span>
+            ${canWrite?'<button class="ghost small note-arch" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
+        : '';
+      return `<div class="sub-item" style="display:block;">
+        <div style="display:flex;align-items:center;">
+          <div class="m" style="flex:1;"><div>${escapeHtml(patName[r.pathology_id]||'—')}</div>
+          <div class="d">${[r.data_rilevazione?fmtDate(r.data_rilevazione):'',escapeHtml(r.note_self_report||'')].filter(Boolean).join(' · ')||'—'}</div></div>
+          ${canWrite?'<button class="ghost small sr-add-pat" data-hr="'+r.id+'">+ Nota</button> <button class="ghost small hr-arch" data-id="'+r.id+'">Archivia</button>':''}
+        </div>
+        ${notesHtml}
+      </div>`;
+    }).join('');
+    if(canWrite){
+      body.querySelectorAll('.sr-add-pat').forEach(b=>b.addEventListener('click',()=>openSelfRepModal(personId, b.dataset.hr)));
+      body.querySelectorAll('.hr-arch').forEach(b=>b.addEventListener('click',()=>archiveHealth('health_records',b.dataset.id,personId)));
+      body.querySelectorAll('.note-arch').forEach(b=>b.addEventListener('click',()=>archiveHealth('self_reports',b.dataset.id,personId)));
+    }
+  }
+
+  // sezione DIARIO generale (note senza patologia)
+  const generali = SELFREP_ALL.filter(n=>!n.health_record_id);
+  let diaryHtml = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
+    <div style="display:flex;align-items:center;margin-bottom:8px;"><span style="font-size:14px;font-weight:600;flex:1;">Diario generale</span>
+    ${canWrite?'<button class="ghost small" id="sr-add-gen">+ Nota diario</button>':''}</div>`;
+  diaryHtml += generali.length
+    ? generali.map(n=>`<div class="sub-item"><div class="m"><div class="d">${fmtDate(n.data_nota)}</div><div>${escapeHtml(n.testo)}</div></div>${canWrite?'<button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
+    : `<div style="font-size:13px;color:var(--ink-soft);padding:6px 0;">Nessuna nota di diario.</div>`;
+  diaryHtml += `</div>`;
+
+  // diritto all'oblio: cancellazione definitiva, solo admin
+  if(ME.ruolo==='admin'){
+    diaryHtml += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
+      <button class="ghost small danger" id="hr-harddelete">Cancellazione definitiva dati sanitari (diritto all'oblio)</button>
+      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0;">Rimuove in modo irreversibile tutti i dati sanitari e i self-report di questa persona. Operazione tracciata.</p></div>`;
+  }
+  body.insertAdjacentHTML('beforeend', diaryHtml);
+  if(canWrite && el('sr-add-gen')) el('sr-add-gen').addEventListener('click',()=>openSelfRepModal(personId, null));
+  if(canWrite) body.querySelectorAll('.note-arch-g').forEach(b=>b.addEventListener('click',()=>archiveHealth('self_reports',b.dataset.id,personId)));
+  if(ME.ruolo==='admin' && el('hr-harddelete')) el('hr-harddelete').addEventListener('click',()=>hardDeleteHealth(personId));
+}
+async function archiveHealth(tabella, id, personId){
+  if(!confirm('Archiviare questo elemento?\n\nVerrà nascosto dalla vista ma resta conservato e tracciato (per correzioni di errori ordinari).')) return;
+  const {error}=await sb.from(tabella).update({archiviato:true}).eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadHealth(personId);
+}
+async function hardDeleteHealth(personId){
+  if(!confirm('CANCELLAZIONE DEFINITIVA\n\nStai per rimuovere in modo IRREVERSIBILE tutti i dati sanitari e i self-report di questa persona (diritto all\'oblio).\n\nQuesta operazione NON può essere annullata. Continuare?')) return;
+  if(!confirm('Conferma definitiva: procedere con la cancellazione irreversibile?')) return;
+  const {data,error}=await sb.rpc('hard_delete_health_data',{p_person_id:personId});
+  if(error){ alert('Errore: '+error.message); return; }
+  alert('Cancellazione completata: '+(data||0)+' dati sanitari rimossi. L\'operazione è stata registrata nel log.');
+  loadHealth(personId);
+}
+
+let SELFREP_ALL=[];
+function openSelfRepModal(personId, healthRecordId){
+  HEALTH_PERSON=personId; SR_HR=healthRecordId;
+  el('sr-msg').className='msg';
+  el('sr-data').value=new Date().toISOString().slice(0,10); el('sr-testo').value='';
+  el('sr-title').textContent = healthRecordId ? 'Nota su patologia' : 'Nota di diario generale';
+  el('sr-context').textContent = healthRecordId ? 'Andamento percepito di questa condizione.' : 'Diario di benessere generale, non legato a una patologia.';
+  el('modal-selfrep').classList.add('open');
+}
+let SR_HR=null;
+async function saveSelfRep(){
+  const msg=el('sr-msg'); msg.className='msg';
+  if(!el('sr-data').value||!el('sr-testo').value.trim()){ msg.textContent='Data e testo sono obbligatori.'; msg.className='msg err'; return; }
+  const payload={
+    person_id:HEALTH_PERSON, health_record_id:SR_HR||null, consultant_id:ME.id,
+    data_nota:el('sr-data').value, testo:el('sr-testo').value.trim(), fonte:'persona'
+  };
+  const btn=el('sr-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const {error}=await sb.from('self_reports').insert(payload);
+  btn.disabled=false; btn.textContent='Salva';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  el('modal-selfrep').classList.remove('open');
+  loadHealth(HEALTH_PERSON);
+}
+
+function openConsentModal(personId){
+  HEALTH_PERSON=personId; el('cons-msg').className='msg';
+  el('cons-ver').value='v1.0'; el('cons-data').value=new Date().toISOString().slice(0,10);
+  el('cons-doc').value=''; el('cons-chk').checked=false;
+  el('modal-consent').classList.add('open');
+}
+async function saveConsent(){
+  const msg=el('cons-msg'); msg.className='msg';
+  if(!el('cons-chk').checked){ msg.textContent='Devi confermare il processo di consenso informato.'; msg.className='msg err'; return; }
+  if(!el('cons-ver').value.trim()||!el('cons-data').value){ msg.textContent='Versione e data sono obbligatorie.'; msg.className='msg err'; return; }
+  const payload={
+    person_id:HEALTH_PERSON, testo_versione:el('cons-ver').value.trim(),
+    data_consenso:el('cons-data').value, stato:'attivo',
+    raccolto_da:ME.id, documento_url:el('cons-doc').value.trim()||null
+  };
+  const btn=el('cons-save'); btn.disabled=true; btn.textContent='Registrazione…';
+  const {error}=await sb.from('health_consents').insert(payload);
+  btn.disabled=false; btn.textContent='Registra consenso';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  el('modal-consent').classList.remove('open');
+  loadHealth(HEALTH_PERSON);
+}
+async function revokeConsent(consentId, personId){
+  if(!confirm('Revocare il consenso? I dati sanitari diventeranno immediatamente inaccessibili.')) return;
+  const {error}=await sb.from('health_consents').update({stato:'revocato',data_revoca:new Date().toISOString()}).eq('id',consentId);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadHealth(personId);
+}
+
+let PATHO_LIST=[];
+async function openPathoModal(personId){
+  HEALTH_PERSON=personId; el('pat-msg').className='msg';
+  el('pat-data').value=new Date().toISOString().slice(0,10); el('pat-note').value='';
+  el('pat-newbox').style.display='none'; el('pat-newname').value=''; el('pat-simwarn').style.display='none';
+  await reloadPathoSelect();
+  el('modal-patho').classList.add('open');
+}
+async function reloadPathoSelect(selectId){
+  const {data:pats}=await sb.from('pathologies').select('id,denominazione').eq('attiva',true).order('denominazione');
+  PATHO_LIST=pats||[];
+  el('pat-sel').innerHTML='<option value="">— seleziona —</option>'+PATHO_LIST.map(p=>`<option value="${p.id}">${escapeHtml(p.denominazione)}</option>`).join('');
+  if(selectId) el('pat-sel').value=selectId;
+}
+// normalizza per confronto: minuscolo, senza spazi multipli/punteggiatura
+function normName(s){ return String(s||'').toLowerCase().trim().replace(/[.,;]/g,'').replace(/\s+/g,' '); }
+function checkSimilar(){
+  const v=normName(el('pat-newname').value);
+  const warn=el('pat-simwarn');
+  if(!v){ warn.style.display='none'; return; }
+  const sim=PATHO_LIST.filter(p=>{ const n=normName(p.denominazione); return n.includes(v)||v.includes(n); });
+  if(sim.length){
+    warn.style.display='block';
+    warn.textContent='Attenzione: esiste già '+(sim.length>1?'qualcosa di simile':'una voce simile')+': '+sim.map(p=>p.denominazione).join(', ')+'. Usa quella se è la stessa, per evitare doppioni.';
+  } else warn.style.display='none';
+}
+async function saveNewPatho(){
+  const name=el('pat-newname').value.trim();
+  if(!name){ return; }
+  const btn=el('pat-newsave'); btn.disabled=true; btn.textContent='Aggiunta…';
+  const {data,error}=await sb.from('pathologies').insert({denominazione:name}).select('id').single();
+  btn.disabled=false; btn.textContent='Aggiungi al catalogo';
+  if(error){
+    // se è un doppione esatto (unique), avvisa con garbo
+    const m = error.message.includes('duplicate') || error.code==='23505'
+      ? 'Questa patologia esiste già nel catalogo: selezionala dall\'elenco.'
+      : 'Errore: '+error.message;
+    el('pat-simwarn').style.display='block'; el('pat-simwarn').textContent=m; return;
+  }
+  // ricarica il catalogo e preseleziona la nuova
+  await reloadPathoSelect(data.id);
+  el('pat-newbox').style.display='none'; el('pat-newname').value=''; el('pat-simwarn').style.display='none';
+}
+async function savePatho(){
+  const msg=el('pat-msg'); msg.className='msg';
+  if(!el('pat-sel').value){ msg.textContent='Seleziona una patologia.'; msg.className='msg err'; return; }
+  const {data:consents}=await sb.from('health_consents').select('id').eq('person_id',HEALTH_PERSON).eq('stato','attivo').order('data_consenso',{ascending:false}).limit(1);
+  if(!consents||!consents.length){ msg.textContent='Nessun consenso attivo. Impossibile salvare.'; msg.className='msg err'; return; }
+  const payload={
+    person_id:HEALTH_PERSON, consent_id:consents[0].id, pathology_id:el('pat-sel').value,
+    data_rilevazione:el('pat-data').value||null, note_self_report:el('pat-note').value.trim()||null, fonte:'persona'
+  };
+  const btn=el('pat-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const {error}=await sb.from('health_records').insert(payload);
+  btn.disabled=false; btn.textContent='Salva';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  el('modal-patho').classList.remove('open');
+  loadHealth(HEALTH_PERSON);
+}
+
+// ---------- INCONTRI ----------
+let EDIT_MEETING=null;
+async function loadMeetings(personId){
+  const body=el('meet-body');
+  const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
+  const {data,error}=await sb.from('meetings').select('id,data_ora,durata_min,sintesi').eq('person_id',personId).order('data_ora',{ascending:false});
+  if(error){ body.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data||!data.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessun incontro registrato.</div>`; return; }
+  body.innerHTML=data.map(m=>`<div class="sub-item">
+    <div class="m"><div>${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</div>
+    <div class="d">${escapeHtml(m.sintesi||'—')}</div></div>
+    ${canWrite?'<button class="ghost small meet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger meet-del" data-id="'+m.id+'">Elimina</button>':''}</div>`).join('');
+  if(canWrite){
+    body.querySelectorAll('.meet-edit').forEach(b=>b.addEventListener('click',()=>openMeetingModal(b.dataset.id)));
+    body.querySelectorAll('.meet-del').forEach(b=>b.addEventListener('click',()=>delMeeting(b.dataset.id)));
+  }
+}
+async function openMeetingModal(id){
+  EDIT_MEETING=id||null; el('mm-msg').className='msg';
+  el('mm-title').textContent = id?'Modifica incontro':'Nuovo incontro';
+  if(id){
+    const {data:m}=await sb.from('meetings').select('data_ora,durata_min,sintesi').eq('id',id).single();
+    if(m){
+      // converte ISO -> formato datetime-local
+      el('m-dataora').value = m.data_ora ? new Date(m.data_ora).toISOString().slice(0,16) : '';
+      el('m-durata').value = m.durata_min||''; el('m-sintesi').value = m.sintesi||'';
+    }
+  } else {
+    el('m-dataora').value=new Date().toISOString().slice(0,16); el('m-durata').value=''; el('m-sintesi').value='';
+  }
+  el('modal-meeting').classList.add('open');
+}
+async function saveMeeting(){
+  const msg=el('mm-msg'); msg.className='msg';
+  if(!el('m-dataora').value){ msg.textContent='Data e ora sono obbligatorie.'; msg.className='msg err'; return; }
+  const payload={
+    person_id:CURRENT_PERSON, consultant_id:ME.id,
+    data_ora:new Date(el('m-dataora').value).toISOString(),
+    durata_min:el('m-durata').value?parseInt(el('m-durata').value):null,
+    sintesi:el('m-sintesi').value.trim()||null
+  };
+  const btn=el('mm-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  let err;
+  if(EDIT_MEETING){ ({error:err}=await sb.from('meetings').update(payload).eq('id',EDIT_MEETING)); }
+  else { ({error:err}=await sb.from('meetings').insert(payload)); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  el('modal-meeting').classList.remove('open');
+  loadMeetings(CURRENT_PERSON);
+}
+// eliminazioni cose semplici
+async function delSite(id,nome){
+  if(!confirm('Eliminare la sede "'+nome+'"? L\'operazione non è reversibile.')) return;
+  const {error}=await sb.from('company_sites').delete().eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadSites(CURRENT_COMPANY,true);
+}
+async function delContact(id,nome){
+  if(!confirm('Eliminare il referente "'+nome+'"?')) return;
+  const {error}=await sb.from('company_contacts').delete().eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadContacts(CURRENT_COMPANY,true);
+}
+async function delMeeting(id){
+  if(!confirm('Eliminare questo incontro? L\'operazione non è reversibile.')) return;
+  const {error}=await sb.from('meetings').delete().eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadMeetings(CURRENT_PERSON);
+}
+function fmtDateTime(dt){ if(!dt)return''; const d=new Date(dt); return d.toLocaleString('it-IT',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+
+let HEALTH_PERSON=null;
+
+// ---------- GESTIONE CATALOGO PATOLOGIE (solo admin) ----------
+let CAT_LIST=[];
+async function viewCatalogo(){
+  if(ME.ruolo!=='admin'){ goTab('aziende'); return; }
+  el('crumbs').innerHTML='Catalogo patologie';
+  el('content').innerHTML=`
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Catalogo patologie</h2>
+    <p class="panel-sub">Denominazioni condivise. Rinomina, fondi i doppioni, attiva/disattiva.</p></div>
+    <button class="primary" id="cat-new">+ Patologia</button></div>
+    <div class="list" id="cat-list"><div class="spinner">Caricamento…</div></div>`;
+  el('cat-new').addEventListener('click', catNew);
+  await loadCatalogo();
+}
+async function loadCatalogo(){
+  const {data,error}=await sb.from('pathologies').select('id,denominazione,attiva').order('attiva',{ascending:false}).order('denominazione');
+  CAT_LIST=data||[];
+  const list=el('cat-list');
+  if(error){ list.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!CAT_LIST.length){ list.innerHTML=`<div class="empty">Catalogo vuoto.</div>`; return; }
+  list.innerHTML=CAT_LIST.map(p=>`
+    <div class="list-item" style="cursor:default;">
+      <div class="li-ic">${p.attiva?'🩺':'🚫'}</div>
+      <div class="li-main"><div class="t">${escapeHtml(p.denominazione)} ${p.attiva?'':'<span style="font-size:11px;color:var(--ink-soft);">(disattivata)</span>'}</div></div>
+      <button class="ghost small" data-act="rename" data-id="${p.id}">Rinomina</button>
+      <button class="ghost small" data-act="merge" data-id="${p.id}">Fondi</button>
+      <button class="ghost small" data-act="toggle" data-id="${p.id}">${p.attiva?'Disattiva':'Riattiva'}</button>
+    </div>`).join('');
+  list.querySelectorAll('button[data-act]').forEach(b=>b.addEventListener('click',()=>catAction(b.dataset.act,b.dataset.id)));
+}
+async function catNew(){
+  const name=prompt('Nuova patologia da aggiungere al catalogo:');
+  if(!name||!name.trim()) return;
+  const {error}=await sb.from('pathologies').insert({denominazione:name.trim()});
+  if(error){ alert(error.code==='23505'?'Esiste già una patologia con questo nome.':'Errore: '+error.message); return; }
+  loadCatalogo();
+}
+async function catAction(act,id){
+  const p=CAT_LIST.find(x=>x.id===id); if(!p) return;
+  if(act==='rename'){
+    const nuovo=prompt('Nuova denominazione per "'+p.denominazione+'":', p.denominazione);
+    if(!nuovo||!nuovo.trim()||nuovo.trim()===p.denominazione) return;
+    const {error}=await sb.from('pathologies').update({denominazione:nuovo.trim()}).eq('id',id);
+    if(error){ alert(error.code==='23505'?'Esiste già una patologia con questo nome.':'Errore: '+error.message); return; }
+    loadCatalogo();
+  } else if(act==='toggle'){
+    const {error}=await sb.from('pathologies').update({attiva:!p.attiva}).eq('id',id);
+    if(error){ alert('Errore: '+error.message); return; }
+    loadCatalogo();
+  } else if(act==='merge'){
+    // quanti record sono collegati a questa patologia?
+    const {count}=await sb.from('health_records').select('id',{count:'exact',head:true}).eq('pathology_id',id);
+    const altre=CAT_LIST.filter(x=>x.id!==id && x.attiva);
+    if(!altre.length){ alert('Non ci sono altre patologie attive su cui fondere.'); return; }
+    const lista=altre.map((x,i)=>`${i+1}. ${x.denominazione}`).join('\n');
+    const scelta=prompt(`Fondere "${p.denominazione}" (${count||0} record collegati) in quale patologia?\nScrivi il NUMERO:\n\n${lista}`);
+    const idx=parseInt(scelta)-1;
+    if(isNaN(idx)||idx<0||idx>=altre.length) return;
+    const target=altre[idx];
+    if(!confirm(`Confermi?\n\nSposti ${count||0} record da "${p.denominazione}" a "${target.denominazione}", poi "${p.denominazione}" verrà disattivata.\n\nL'operazione è tracciata.`)) return;
+    const {data,error}=await sb.rpc('merge_pathology',{p_source:id,p_target:target.id});
+    if(error){ alert('Errore nella fusione: '+error.message); return; }
+    alert(`Fusione completata: ${data} record spostati su "${target.denominazione}".`);
+    loadCatalogo();
+  }
+}
+
+// ---------- STATISTICHE (solo admin) ----------
+const ASSI = [
+  {k:'asse1_sessualita', lab:'Sessualità', opts:['Maschio','Femmina']},
+  {k:'asse2_lateralita', lab:'Lateralità', opts:['Destrimane','Mancino']},
+  {k:'asse3_bisogni',    lab:'Bisogni',    opts:['Protezione','Identificazione','Spazialità']},
+  {k:'asse4_foglietto',  lab:'Foglietto',  opts:['Boccone','Attacco','Gratificazione','Socialità']},
+  {k:'asse5_intensita',  lab:'Intensità',  opts:['Inibizione','Attivazione']},
+  {k:'asse6_reciprocita',lab:'Reciprocità',opts:['Prenditore','Prenditore/donatore','Donatore/prenditore','Donatore']}
+];
+async function viewStatistiche(){
+  if(ME.ruolo!=='admin'){ goTab('aziende'); return; }
+  el('crumbs').innerHTML='Statistiche';
+  // patologie per il filtro
+  const {data:pats}=await sb.from('pathologies').select('denominazione').eq('attiva',true).order('denominazione');
+  const patOpts = (pats||[]).map(p=>`<option>${escapeHtml(p.denominazione)}</option>`).join('');
+  const assiFiltri = ASSI.map(a=>`<div><label>${a.lab}</label><select class="stat-f" data-k="${a.k}"><option value="">— tutte —</option>${a.opts.map(o=>`<option>${o}</option>`).join('')}</select></div>`).join('');
+  el('content').innerHTML=`
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Analisi SPP × Patologie</h2>
+    <p class="panel-sub">Solo admin · le analisi nominative vengono registrate.</p></div></div>
+    <div style="background:#f7e9e8;color:var(--danger);font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:14px;">
+      Le combinazioni con pochi casi possono identificare le persone: maneggiare con cautela.</div>
+    <div class="section">
+      <div class="sh"><span class="st">Filtri</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px;">
+        <div><label>Patologia</label><select id="stat-pat"><option value="">— tutte —</option>${patOpts}</select></div>
+        ${assiFiltri}
+      </div>
+      <button class="primary" id="stat-run" style="margin-top:6px;">Calcola</button>
+    </div>
+    <div id="stat-result"></div>`;
+  el('stat-run').addEventListener('click', runStat);
+}
+
+function readFilters(){
+  const f={ patologia: el('stat-pat').value || null };
+  document.querySelectorAll('.stat-f').forEach(s=>{ f[s.dataset.k] = s.value || null; });
+  return f;
+}
+
+async function runStat(){
+  const res=el('stat-result'); res.innerHTML='<div class="section"><div class="spinner">Calcolo…</div></div>';
+  const f=readFilters();
+  // AGGREGATO: leggo la vista e filtro lato client (semplice e sufficiente)
+  const {data,error}=await sb.from('v_spp_patologia_agg').select('*');
+  if(error){ res.innerHTML=`<div class="section"><div class="empty">Errore: ${error.message}</div></div>`; return; }
+  let rows=(data||[]).filter(r=>{
+    if(f.patologia && r.denominazione!==f.patologia) return false;
+    for(const a of ASSI){ if(f[a.k] && r[a.k]!==f[a.k]) return false; }
+    return true;
+  });
+  const tot=rows.reduce((s,r)=>s+Number(r.numero_casi),0);
+
+  let html=`<div class="section">
+    <div class="sh"><span class="st">Aggregato</span><span style="font-size:12px;color:var(--ink-soft);margin-left:8px;">${tot} casi</span></div>`;
+  if(!rows.length){ html+=`<div class="empty" style="padding:14px;">Nessun caso con questi filtri.</div>`; }
+  else {
+    // raggruppo per patologia mostrando la distribuzione
+    html+=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <tr style="text-align:left;color:var(--ink-soft);border-bottom:1px solid var(--line);">
+      <th style="padding:6px 8px;">Patologia</th><th style="padding:6px 8px;">Sess.</th><th style="padding:6px 8px;">Lat.</th>
+      <th style="padding:6px 8px;">Bisogni</th><th style="padding:6px 8px;">Fogl.</th><th style="padding:6px 8px;">Intens.</th>
+      <th style="padding:6px 8px;">Recipr.</th><th style="padding:6px 8px;text-align:right;">Casi</th></tr>`;
+    rows.sort((a,b)=>Number(b.numero_casi)-Number(a.numero_casi));
+    html+=rows.map(r=>`<tr style="border-bottom:1px solid var(--line);">
+      <td style="padding:6px 8px;">${escapeHtml(r.denominazione)}</td>
+      <td style="padding:6px 8px;">${escapeHtml(r.asse1_sessualita||'—')}</td>
+      <td style="padding:6px 8px;">${escapeHtml(r.asse2_lateralita||'—')}</td>
+      <td style="padding:6px 8px;">${escapeHtml(r.asse3_bisogni||'—')}</td>
+      <td style="padding:6px 8px;">${escapeHtml(r.asse4_foglietto||'—')}</td>
+      <td style="padding:6px 8px;">${escapeHtml(r.asse5_intensita||'—')}</td>
+      <td style="padding:6px 8px;">${escapeHtml(r.asse6_reciprocita||'—')}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:600;">${r.numero_casi}</td></tr>`).join('');
+    html+=`</table></div>`;
+  }
+  html+=`<button class="ghost small" id="stat-detail" style="margin-top:12px;">Mostra dettaglio nominativo (registrato)</button>`;
+  html+=`</div><div id="stat-names"></div>`;
+  res.innerHTML=html;
+  el('stat-detail').addEventListener('click', ()=>runDetail(f));
+}
+
+async function runDetail(f){
+  const box=el('stat-names'); box.innerHTML='<div class="section"><div class="spinner">Caricamento nominativo…</div></div>';
+  const {data,error}=await sb.rpc('spp_patologia_dettaglio',{
+    p_patologia:f.patologia, p_sessualita:f.asse1_sessualita, p_lateralita:f.asse2_lateralita,
+    p_bisogni:f.asse3_bisogni, p_foglietto:f.asse4_foglietto, p_intensita:f.asse5_intensita,
+    p_reciprocita:f.asse6_reciprocita
+  });
+  if(error){ box.innerHTML=`<div class="section"><div class="empty">Errore: ${error.message}</div></div>`; return; }
+  if(!data||!data.length){ box.innerHTML=`<div class="section"><div class="empty" style="padding:14px;">Nessuna persona con questi filtri.</div></div>`; return; }
+  box.innerHTML=`<div class="section">
+    <div class="sh"><span class="st">Dettaglio nominativo</span><span style="font-size:11px;padding:3px 9px;border-radius:12px;background:#f7e9e8;color:var(--danger);margin-left:8px;">accesso registrato</span></div>
+    ${data.map(d=>`<div class="sub-item"><div class="m"><div>${escapeHtml(d.persona)} ${d.azienda?'<span style="color:var(--ink-soft);font-size:12px;">· '+escapeHtml(d.azienda)+'</span>':''}</div>
+    <div class="d">${escapeHtml(d.patologia)} · ${[d.lateralita,d.bisogni,d.foglietto,d.intensita,d.reciprocita].filter(Boolean).join(', ')} · ${d.n_incontri||0} incontri${d.ultimo_incontro?' · ultimo '+fmtDate(d.ultimo_incontro.slice(0,10)):''}</div></div></div>`).join('')}
+  </div>`;
+}
+
+function initials(n,c){ return ((n||'').charAt(0)+(c||'').charAt(0)).toUpperCase(); }
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+// ---------- eventi ----------
+el('login-btn').addEventListener('click', doLogin);
+el('password').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+el('logout-btn').addEventListener('click', doLogout);
+el('home-btn').addEventListener('click', ()=>{ if(ME) goTab('aziende'); });
+el('mc-cancel').addEventListener('click', ()=>{ el('modal-company').classList.remove('open'); EDIT_COMPANY=null; });
+el('mc-save').addEventListener('click', saveCompany);
+el('ms-cancel').addEventListener('click', ()=>{ el('modal-site').classList.remove('open'); EDIT_SITE=null; });
+el('ms-save').addEventListener('click', saveSite);
+el('mr-cancel').addEventListener('click', ()=>{ el('modal-contact').classList.remove('open'); EDIT_CONTACT=null; });
+el('mr-save').addEventListener('click', saveContact);
+el('mp-cancel').addEventListener('click', ()=>{ el('modal-person').classList.remove('open'); EDIT_PERSON=null; });
+el('mp-save').addEventListener('click', savePerson);
+el('msp-cancel').addEventListener('click', ()=>{ el('modal-spp').classList.remove('open'); });
+el('msp-save').addEventListener('click', saveSpp);
+el('pa-cancel').addEventListener('click', ()=>{ el('modal-passign').classList.remove('open'); });
+el('pa-save').addEventListener('click', saveProfAssign);
+el('cons-cancel').addEventListener('click', ()=>{ el('modal-consent').classList.remove('open'); });
+el('cons-save').addEventListener('click', saveConsent);
+el('pat-cancel').addEventListener('click', ()=>{ el('modal-patho').classList.remove('open'); });
+el('pat-save').addEventListener('click', savePatho);
+el('pat-newtoggle').addEventListener('click', ()=>{ const b=el('pat-newbox'); b.style.display = b.style.display==='none'?'block':'none'; });
+el('pat-newcancel').addEventListener('click', ()=>{ el('pat-newbox').style.display='none'; el('pat-newname').value=''; el('pat-simwarn').style.display='none'; });
+el('pat-newname').addEventListener('input', checkSimilar);
+el('pat-newsave').addEventListener('click', saveNewPatho);
+el('mm-cancel').addEventListener('click', ()=>{ el('modal-meeting').classList.remove('open'); });
+el('mm-save').addEventListener('click', saveMeeting);
+el('sr-cancel').addEventListener('click', ()=>{ el('modal-selfrep').classList.remove('open'); });
+el('sr-save').addEventListener('click', saveSelfRep);
+[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-selfrep']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+
+loadSession();
+</script>
+</body>
+</html>
