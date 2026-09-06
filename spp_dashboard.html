@@ -273,6 +273,25 @@
   <div class="modal-actions"><button class="ghost" id="sr-cancel">Annulla</button><button class="primary" id="sr-save">Salva</button></div>
 </div></div>
 
+<!-- MODAL CALENDARIO PRENOTAZIONI -->
+<div class="modal-bg" id="modal-calendar"><div class="modal">
+  <h3 id="mcal-title">Calendario prenotazioni</h3><div id="mcal-msg" class="msg"></div>
+  <div class="grid2">
+    <div><label>Durata slot (minuti) *</label><input type="number" id="cal-duration" value="30"></div>
+    <div><label>Max prenotazioni/giorno</label><input type="number" id="cal-maxday" placeholder="illimitato"></div>
+  </div>
+  <div class="grid2">
+    <div><label>Data inizio disponibilità</label><input type="date" id="cal-start"></div>
+    <div><label>Data fine disponibilità</label><input type="date" id="cal-end"></div>
+  </div>
+  <label>Colore</label><input type="color" id="cal-color" value="#7c6fcd" style="height:40px;padding:4px;">
+  <label>Codice di accesso (PIN, opzionale)</label><input type="text" id="cal-pin" placeholder="Lascia vuoto per accesso libero via link">
+  <label>Email di notifica prenotazioni</label><input type="email" id="cal-emailnotif" placeholder="email del consulente">
+  <label>Note</label><textarea id="cal-note" rows="2"></textarea>
+  <div id="cal-schedule-box" style="margin:10px 0 14px;"></div>
+  <div class="modal-actions"><button class="ghost" id="mcal-cancel">Annulla</button><button class="primary" id="mcal-save">Salva</button></div>
+</div></div>
+
 <script>
 const SUPABASE_URL = "https://rronmtbpvhetoiddynmz.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyb25tdGJwdmhldG9pZGR5bm16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NDA4NzEsImV4cCI6MjA5NjQxNjg3MX0.MVqdH3aTlXWukzZCbv171uaqiiF3n6wmK3KfYoitlpA";
@@ -338,6 +357,7 @@ function renderTabs(){
   el('nav-tabs').innerHTML = `
     <div class="nav-tab" data-tab="aziende">Aziende</div>
     <div class="nav-tab" data-tab="professionisti">Professionisti</div>
+    <div class="nav-tab" data-tab="calendario-lp">Liberi Professionisti</div>
     ${adminTabs}`;
   el('nav-tabs').querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>goTab(t.dataset.tab)));
 }
@@ -346,6 +366,7 @@ function goTab(tab){
   el('nav-tabs').querySelectorAll('.nav-tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
   if(tab==='aziende') viewCompanies();
   else if(tab==='professionisti') viewProfessionals();
+  else if(tab==='calendario-lp') viewFreelanceCalendar();
   else if(tab==='catalogo') viewCatalogo();
   else if(tab==='statistiche') viewStatistiche();
 }
@@ -418,7 +439,8 @@ async function enterCompany(id){
     <p class="panel-sub">${[c&&c.partita_iva?'P.IVA '+escapeHtml(c.partita_iva):'',escapeHtml(c&&c.settore||'')].filter(Boolean).join(' · ')||'Dati azienda'}</p></div></div>
     <div class="section"><div class="sh"><span class="st">Persone</span>${canWrite?'<button class="primary small" id="add-person">+ Persona</button>':''}</div><div id="persons-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Sedi</span>${canWrite?'<button class="primary small" id="add-site">+ Sede</button>':''}</div><div id="sites-list"><div class="spinner">Caricamento…</div></div></div>
-    <div class="section"><div class="sh"><span class="st">Referenti</span>${canWrite?'<button class="primary small" id="add-contact">+ Referente</button>':''}</div><div id="contacts-list"><div class="spinner">Caricamento…</div></div></div>`;
+    <div class="section"><div class="sh"><span class="st">Referenti</span>${canWrite?'<button class="primary small" id="add-contact">+ Referente</button>':''}</div><div id="contacts-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section"><div class="sh"><span class="st">Calendario prenotazioni</span></div><div id="calendar-box"><div class="spinner">Caricamento…</div></div></div>`;
   el('back-btn-top').addEventListener('click',()=>goTab('aziende'));
   if(canWrite){
     el('add-person').addEventListener('click',()=>openPersonModal(null,'dipendente'));
@@ -426,6 +448,7 @@ async function enterCompany(id){
     el('add-contact').addEventListener('click',()=>openContactModal(null));
   }
   loadPersons(id,canWrite); loadSites(id,canWrite); loadContacts(id,canWrite);
+  loadCalendarBox(id, canWrite, c?c.ragione_sociale:'Azienda', 'calendar-box', ()=>enterCompany(id));
 }
 
 // ---------- PERSONE (dipendenti dentro azienda) ----------
@@ -772,6 +795,199 @@ async function loadContacts(companyId,canWrite){
     box.querySelectorAll('.contact-edit').forEach(b=>b.addEventListener('click',()=>openContactModal(b.dataset.id)));
     box.querySelectorAll('.contact-del').forEach(b=>b.addEventListener('click',()=>delContact(b.dataset.id,b.dataset.nome)));
   }
+}
+
+// ---------- CALENDARIO PRENOTAZIONI ----------
+// Sostituisce slot-booking/slot_admin.html: la gestione calendari vive qui,
+// dentro la sessione già autenticata di GESPP, niente più password condivisa.
+const BOOK_DAYS=['','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
+const BOOKING_BASE_URL='https://fullylifesolutions.github.io/slot-booking/slot_booking.html';
+let CAL_STATE={};
+
+// company_id null (pool "Liberi Professionisti") va cercato con .is(), non
+// .eq() — Postgres non considera mai NULL uguale a NULL in un confronto =.
+function calQuery(companyId){
+  const q=sb.from('booking_calendars').select('*');
+  return companyId ? q.eq('company_id',companyId) : q.is('company_id',null);
+}
+
+async function loadCalendarBox(companyId, canWrite, nome, boxId, backFn){
+  const box=el(boxId);
+  const {data:cal,error}=await calQuery(companyId).maybeSingle();
+  const reload=()=>loadCalendarBox(companyId,canWrite,nome,boxId,backFn);
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!cal){
+    box.innerHTML = `<div class="empty" style="padding:14px 0;">Nessun calendario configurato.</div>`
+      + (canWrite?`<button class="primary small" id="cal-create">+ Crea calendario</button>`:'');
+    if(canWrite) el('cal-create').addEventListener('click',()=>openCalendarAdmin(companyId, nome, null, reload));
+    return;
+  }
+  box.innerHTML = renderCalendarSummary(cal, canWrite);
+  el('cal-copylink').addEventListener('click', ()=>copyCalLink(cal));
+  el('cal-manage').addEventListener('click', ()=>openCalendarBookings(cal, canWrite, nome, backFn));
+  if(canWrite) el('cal-edit').addEventListener('click', ()=>openCalendarAdmin(companyId, nome, cal, reload));
+  if(ME.ruolo==='admin') el('cal-delete').addEventListener('click', ()=>deleteCalendar(cal.id, reload));
+}
+
+function renderCalendarSummary(cal, canWrite){
+  const days=(cal.schedules||[]).map(s=>BOOK_DAYS[s.day]).join(', ')||'—';
+  return `<div class="sub-item" style="align-items:flex-start;">
+    <div class="m">
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${escapeHtml(cal.color||'#7c6fcd')};margin-right:6px;"></span>${cal.duration_min} min · ${escapeHtml(days)}${cal.pin?' · 🔒 codice richiesto':''}</div>
+      <div class="d">${cal.max_per_day?('Max '+cal.max_per_day+'/giorno · '):''}${cal.start_date?('dal '+fmtDate(cal.start_date)+' '):''}${cal.end_date?('al '+fmtDate(cal.end_date)):''}${cal.email_notifiche?(' · notifiche a '+escapeHtml(cal.email_notifiche)):''}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+      <button class="ghost small" id="cal-copylink">Copia link</button>
+      <button class="ghost small" id="cal-manage">Prenotazioni</button>
+      ${canWrite?'<button class="ghost small" id="cal-edit">Configura</button>':''}
+      ${ME.ruolo==='admin'?'<button class="ghost small danger" id="cal-delete">Elimina</button>':''}
+    </div>
+  </div>`;
+}
+
+async function copyCalLink(cal){
+  const link=BOOKING_BASE_URL+'?cal='+cal.id+(cal.pin?('&pin='+encodeURIComponent(cal.pin)):'');
+  try{ await navigator.clipboard.writeText(link); alert('Link copiato negli appunti:\n'+link); }
+  catch(e){ prompt('Copia il link:', link); }
+}
+
+async function deleteCalendar(calId, reload){
+  if(!confirm('Eliminare il calendario? Tutte le prenotazioni e i blocchi collegati verranno rimossi.\n\nOperazione non reversibile.')) return;
+  const {error}=await sb.from('booking_calendars').delete().eq('id',calId);
+  if(error){ alert('Errore: '+error.message); return; }
+  reload();
+}
+
+// ---- configurazione calendario (orari, PIN, durata, ecc.) ----
+function openCalendarAdmin(companyId, nome, existingCal, onSaved){
+  CAL_STATE={companyId, editId: existingCal?existingCal.id:null, nome, onSaved};
+  el('mcal-msg').className='msg';
+  el('mcal-title').textContent = existingCal ? 'Configura calendario — '+nome : 'Crea calendario — '+nome;
+  el('cal-duration').value = existingCal?existingCal.duration_min:30;
+  el('cal-maxday').value = (existingCal&&existingCal.max_per_day)?existingCal.max_per_day:'';
+  el('cal-start').value = existingCal?(existingCal.start_date||''):'';
+  el('cal-end').value = existingCal?(existingCal.end_date||''):'';
+  el('cal-color').value = existingCal?(existingCal.color||'#7c6fcd'):'#7c6fcd';
+  el('cal-pin').value = existingCal?(existingCal.pin||''):'';
+  el('cal-emailnotif').value = existingCal?(existingCal.email_notifiche||''):'';
+  el('cal-note').value = existingCal?(existingCal.note||''):'';
+  renderScheduleEditor(existingCal?existingCal.schedules:[]);
+  el('modal-calendar').classList.add('open');
+}
+function renderScheduleEditor(schedules){
+  const box=el('cal-schedule-box');
+  const byDay={}; (schedules||[]).forEach(s=>byDay[s.day]=s.ranges||[]);
+  box.innerHTML = '<label>Giorni e orari disponibili</label>' + [1,2,3,4,5,6,7].map(d=>{
+    const r=byDay[d]||[];
+    const r1=r[0]||{start:'',end:''}, r2=r[1]||{start:'',end:''};
+    return `<div class="chk-row" style="flex-wrap:wrap;">
+      <input type="checkbox" class="day-active" data-day="${d}" ${r.length?'checked':''}>
+      <span style="width:76px;">${BOOK_DAYS[d]}</span>
+      <input type="time" class="day-r1s" data-day="${d}" value="${r1.start}" style="width:110px;margin:0;">
+      <span>–</span>
+      <input type="time" class="day-r1e" data-day="${d}" value="${r1.end}" style="width:110px;margin:0;">
+      <span style="color:var(--ink-soft);font-size:11px;">+ fascia 2</span>
+      <input type="time" class="day-r2s" data-day="${d}" value="${r2.start}" style="width:110px;margin:0;">
+      <span>–</span>
+      <input type="time" class="day-r2e" data-day="${d}" value="${r2.end}" style="width:110px;margin:0;">
+    </div>`;
+  }).join('');
+}
+function readScheduleEditor(){
+  const schedules=[];
+  for(let d=1; d<=7; d++){
+    if(!document.querySelector(`.day-active[data-day="${d}"]`).checked) continue;
+    const ranges=[];
+    const r1s=document.querySelector(`.day-r1s[data-day="${d}"]`).value, r1e=document.querySelector(`.day-r1e[data-day="${d}"]`).value;
+    const r2s=document.querySelector(`.day-r2s[data-day="${d}"]`).value, r2e=document.querySelector(`.day-r2e[data-day="${d}"]`).value;
+    if(r1s&&r1e) ranges.push({start:r1s,end:r1e});
+    if(r2s&&r2e) ranges.push({start:r2s,end:r2e});
+    if(ranges.length) schedules.push({day:d,ranges});
+  }
+  return schedules;
+}
+async function saveCalendar(){
+  const msg=el('mcal-msg'); msg.className='msg';
+  const duration=parseInt(el('cal-duration').value);
+  if(!duration||duration<5){ msg.textContent='Durata slot non valida.'; msg.className='msg err'; return; }
+  const schedules=readScheduleEditor();
+  if(!schedules.length){ msg.textContent='Seleziona almeno un giorno con un orario valido.'; msg.className='msg err'; return; }
+  const payload={
+    company_id: CAL_STATE.companyId,
+    nome: CAL_STATE.nome,
+    color: el('cal-color').value,
+    duration_min: duration,
+    schedules,
+    max_per_day: el('cal-maxday').value?parseInt(el('cal-maxday').value):null,
+    start_date: el('cal-start').value||null,
+    end_date: el('cal-end').value||null,
+    pin: el('cal-pin').value.trim()||null,
+    email_notifiche: el('cal-emailnotif').value.trim()||null,
+    note: el('cal-note').value.trim()||null
+  };
+  const btn=el('mcal-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  let err;
+  if(CAL_STATE.editId){ ({error:err}=await sb.from('booking_calendars').update(payload).eq('id',CAL_STATE.editId)); }
+  else { ({error:err}=await sb.from('booking_calendars').insert(payload)); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  el('modal-calendar').classList.remove('open');
+  if(CAL_STATE.onSaved) CAL_STATE.onSaved();
+}
+
+// ---- prenotazioni/blocchi (righe reali in booking_slots, non la vista pubblica) ----
+async function openCalendarBookings(cal, canWrite, nome, backFn){
+  el('crumbs').innerHTML = `<a id="cb-x">${escapeHtml(nome)}</a> › Prenotazioni`;
+  el('content').innerHTML = `
+    <button class="back-btn" id="cb-back">← ${escapeHtml(nome)}</button>
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Prenotazioni</h2>
+    <p class="panel-sub">Slot occupati o bloccati da oggi in poi, per "${escapeHtml(nome)}".</p></div></div>
+    ${canWrite?`<div class="section"><div class="sh"><span class="st">Blocca uno slot</span></div>
+      <div class="grid2"><div><label>Data</label><input type="date" id="cb-block-date"></div><div><label>Ora</label><input type="time" id="cb-block-time"></div></div>
+      <button class="primary small" id="cb-block-btn">Blocca</button></div>`:''}
+    <div class="section"><div class="sh"><span class="st">Elenco</span></div><div id="cb-list"><div class="spinner">Caricamento…</div></div></div>`;
+  el('cb-back').addEventListener('click', backFn);
+  el('cb-x').addEventListener('click', backFn);
+  if(canWrite) el('cb-block-btn').addEventListener('click', ()=>blockSlot(cal.id, canWrite));
+  await loadCalendarBookingsList(cal.id, canWrite);
+}
+async function loadCalendarBookingsList(calendarId, canWrite){
+  const list=el('cb-list');
+  const today=new Date().toISOString().slice(0,10);
+  const {data,error}=await sb.from('booking_slots')
+    .select('id,data,ora,booked,blocked,booker_nome,booker_cognome,booker_email,note')
+    .eq('calendar_id',calendarId).gte('data',today).order('data').order('ora');
+  if(error){ list.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data.length){ list.innerHTML=`<div class="empty">Nessuna prenotazione o blocco da oggi in poi.</div>`; return; }
+  list.innerHTML=data.map(s=>`<div class="sub-item">
+    <div class="m"><div>${s.blocked?'🚫':'📅'} ${fmtDate(s.data)} · ${String(s.ora).slice(0,5)}</div>
+    <div class="d">${s.blocked?'Bloccato manualmente':escapeHtml((s.booker_nome||'')+' '+(s.booker_cognome||'')+' · '+(s.booker_email||''))+(s.note?' · '+escapeHtml(s.note):'')}</div></div>
+    ${canWrite?'<button class="ghost small danger cb-del" data-id="'+s.id+'">'+(s.blocked?'Sblocca':'Cancella')+'</button>':''}</div>`).join('');
+  if(canWrite) list.querySelectorAll('.cb-del').forEach(b=>b.addEventListener('click',async()=>{
+    if(!confirm('Confermi?')) return;
+    const {error}=await sb.from('booking_slots').delete().eq('id',b.dataset.id);
+    if(error){ alert('Errore: '+error.message); return; }
+    loadCalendarBookingsList(calendarId,canWrite);
+  }));
+}
+async function blockSlot(calendarId, canWrite){
+  const d=el('cb-block-date').value, t=el('cb-block-time').value;
+  if(!d||!t){ alert('Inserisci data e ora.'); return; }
+  const {error}=await sb.from('booking_slots').insert({calendar_id:calendarId,data:d,ora:t,blocked:true,booked:false});
+  if(error){ alert(error.code==='23505'?'Esiste già uno slot bloccato o prenotato a quell\'ora.':'Errore: '+error.message); return; }
+  el('cb-block-date').value=''; el('cb-block-time').value='';
+  loadCalendarBookingsList(calendarId,canWrite);
+}
+
+// ---- tab "Liberi Professionisti": un solo calendario condiviso, company_id null ----
+async function viewFreelanceCalendar(){
+  el('crumbs').innerHTML='Liberi Professionisti';
+  const canWrite = ME.ruolo==='admin'||ME.ruolo==='consulente';
+  el('content').innerHTML = `
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Calendario Liberi Professionisti</h2>
+    <p class="panel-sub">Pool condiviso di slot per professionisti indipendenti, non legato a un'azienda.</p></div></div>
+    <div class="section"><div class="sh"><span class="st">Calendario</span></div><div id="lp-calendar-box"><div class="spinner">Caricamento…</div></div></div>`;
+  await loadCalendarBox(null, canWrite, 'Liberi Professionisti', 'lp-calendar-box', ()=>viewFreelanceCalendar());
 }
 
 // ---------- ASSEGNAZIONE PROFESSIONISTA -> CONSULENTI (solo admin) ----------
@@ -1294,7 +1510,9 @@ el('mm-cancel').addEventListener('click', ()=>{ el('modal-meeting').classList.re
 el('mm-save').addEventListener('click', saveMeeting);
 el('sr-cancel').addEventListener('click', ()=>{ el('modal-selfrep').classList.remove('open'); });
 el('sr-save').addEventListener('click', saveSelfRep);
-[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-selfrep']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+el('mcal-cancel').addEventListener('click', ()=>{ el('modal-calendar').classList.remove('open'); });
+el('mcal-save').addEventListener('click', saveCalendar);
+[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-selfrep'],['modal-calendar']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
 
 // Se l'URL arriva da un link di reset password, non lanciare loadSession():
 // mostrerebbe la schermata login in una gara con l'evento PASSWORD_RECOVERY
