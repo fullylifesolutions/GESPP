@@ -1028,15 +1028,34 @@ async function loadHealth(personId){
   const canWrite = ME.ruolo==='admin'||ME.ruolo==='consulente';
   // 1) verifica consenso attivo
   const {data:consents,error:cErr}=await sb.from('health_consents')
-    .select('id,testo_versione,data_consenso,stato').eq('person_id',personId).order('data_consenso',{ascending:false});
+    .select('id,testo_versione,data_consenso,stato,token,token_scadenza,token_usato')
+    .eq('person_id',personId).order('data_consenso',{ascending:false});
   if(cErr){ body.innerHTML=`<div class="empty">Errore: ${cErr.message}</div>`; return; }
   const active=(consents||[]).find(c=>c.stato==='attivo');
 
   if(!active){
+    // richiesta di firma da remoto in corso? (in_attesa, non ancora usata, non scaduta)
+    const pending=(consents||[]).find(c=>c.stato==='in_attesa' && !c.token_usato &&
+      (!c.token_scadenza || new Date(c.token_scadenza) > new Date()));
     tag.innerHTML='<span style="font-size:11px;padding:3px 9px;border-radius:12px;background:#f3f0e8;color:#8a6d3b;">nessun consenso attivo</span>';
-    actions.innerHTML = canWrite ? '<button class="primary small" id="cons-add">Registra consenso</button>' : '';
-    body.innerHTML=`<div class="empty">Per inserire dati sanitari serve prima il consenso attivo della persona.</div>`;
-    if(canWrite) el('cons-add').addEventListener('click',()=>openConsentModal(personId));
+    actions.innerHTML = canWrite
+      ? '<button class="primary small" id="cons-add">Registra consenso</button> <button class="ghost small" id="cons-remote">Richiedi firma da remoto</button>'
+      : '';
+    body.innerHTML = pending
+      ? `<div class="empty" style="text-align:left;padding:14px;">
+          <div style="margin-bottom:8px;">Richiesta di firma da remoto in attesa, scade il ${fmtDateTime(pending.token_scadenza)}.</div>
+          <button class="ghost small" id="cons-copylink">Copia link</button>
+          ${canWrite?'<button class="ghost small danger" id="cons-cancel-remote">Annulla richiesta</button>':''}
+        </div>`
+      : `<div class="empty">Per inserire dati sanitari serve prima il consenso attivo della persona.</div>`;
+    if(canWrite){
+      el('cons-add').addEventListener('click',()=>openConsentModal(personId));
+      el('cons-remote').addEventListener('click',()=>requestRemoteConsent(personId));
+    }
+    if(pending){
+      el('cons-copylink').addEventListener('click',()=>copyConsentLink(pending.token));
+      if(canWrite) el('cons-cancel-remote').addEventListener('click',()=>cancelRemoteConsent(pending.id,personId));
+    }
     return;
   }
 
@@ -1177,6 +1196,34 @@ async function revokeConsent(consentId, personId){
   const {error}=await sb.from('health_consents').update({stato:'revocato',data_revoca:new Date().toISOString()}).eq('id',consentId);
   if(error){ alert('Errore: '+error.message); return; }
   loadHealth(personId);
+}
+
+// ---- richiesta di firma del consenso da remoto (consenso_pagina.html) ----
+// Crea una riga "in_attesa" con un token: la persona apre il link, legge
+// l'informativa, firma sul proprio dispositivo — consenso_firma() (RPC,
+// vedi schema) porta poi lo stato ad 'attivo'. Non serve login per la
+// pagina di firma, e' pensata per essere inviata via email/whatsapp.
+const CONSENSO_BASE_URL = 'https://fullylifesolutions.github.io/GESPP/consenso_pagina.html';
+async function requestRemoteConsent(personId){
+  const token = crypto.randomUUID();
+  const scadenza = new Date(Date.now() + 7*24*60*60*1000).toISOString(); // 7 giorni
+  const {error} = await sb.from('health_consents').insert({
+    person_id: personId, testo_versione: 'in attesa di firma remota',
+    stato: 'in_attesa', token, token_scadenza: scadenza, raccolto_da: ME.id
+  });
+  if(error){ alert('Errore: '+error.message); return; }
+  loadHealth(personId);
+}
+async function cancelRemoteConsent(consentId, personId){
+  if(!confirm('Annullare la richiesta di firma da remoto? Il link inviato smetterà di funzionare.')) return;
+  const {error} = await sb.from('health_consents').delete().eq('id',consentId);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadHealth(personId);
+}
+async function copyConsentLink(token){
+  const link = CONSENSO_BASE_URL+'?token='+encodeURIComponent(token)+'&canale=remoto';
+  try{ await navigator.clipboard.writeText(link); alert('Link copiato negli appunti:\n'+link); }
+  catch(e){ prompt('Copia il link:', link); }
 }
 
 let PATHO_LIST=[];
