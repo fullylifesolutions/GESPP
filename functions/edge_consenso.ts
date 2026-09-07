@@ -33,12 +33,14 @@ Deno.serve(async (req) => {
       Deno.env.get("SERVICE_KEY")!
     );
 
-    const { data: config, error: cfgError } = await supabase
-      .from("consent_config")
-      .select("versione, informativa_pdf_url, consenso_pdf_url, punti")
-      .eq("id", 1)
-      .single();
+    // Passa da una RPC security-definer (consent_config_leggi), non da una
+    // select diretta sulla tabella: stesso motivo di consenso_leggi/
+    // consenso_firma sotto, non serve dare grant specifici al ruolo con
+    // cui gira questa funzione.
+    const { data: configRows, error: cfgError } = await supabase.rpc("consent_config_leggi");
+    const config = configRows && configRows[0];
     if (cfgError || !config) {
+      console.error("consent_config_leggi failed:", cfgError);
       return json({ errore: "Configurazione del consenso non disponibile. Contatta l'amministratore." }, 500);
     }
     const punti: { chiave: string; etichetta: string }[] = Array.isArray(config.punti) ? config.punti : [];

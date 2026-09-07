@@ -202,6 +202,20 @@ begin
     return v_count;
 end; $$;
 
+-- Configurazione del consenso (informativa/consenso PDF + checkbox), letta
+-- dalla Edge Function "consenso" tramite RPC invece che con una select
+-- diretta su consent_config: stesso motivo di consenso_leggi/consenso_firma
+-- sotto — gira con i privilegi di chi l'ha creata, non serve dare grant
+-- specifici al ruolo con cui gira la Edge Function.
+create or replace function public.consent_config_leggi()
+returns table (versione text, informativa_pdf_url text, consenso_pdf_url text, punti jsonb)
+language sql security definer set search_path = public set row_security = off
+as $$
+    select versione, informativa_pdf_url, consenso_pdf_url, punti
+    from public.consent_config where id = 1;
+$$;
+grant execute on function public.consent_config_leggi() to anon, authenticated;
+
 create or replace function public.consenso_leggi(p_token text)
 returns table (person_id uuid, nome text, cognome text)
 language plpgsql security definer set search_path = public set row_security = off
