@@ -1,8 +1,14 @@
 // ============================================================================
-//  SISTEMA SPP — EDGE FUNCTION "consenso" (v2)
-//  Non accede più alle tabelle direttamente: chiama le funzioni del database
-//  consenso_leggi / consenso_firma (SECURITY DEFINER), che fanno il lavoro
-//  con i propri privilegi. Così non serve bypassare la RLS con chiavi speciali.
+//  SISTEMA SPP — EDGE FUNCTION "consenso" (v3)
+//  Non accede più alle tabelle direttamente per persons/health_consents:
+//  chiama le funzioni del database consenso_leggi / consenso_firma
+//  (SECURITY DEFINER), che fanno il lavoro con i propri privilegi. Così non
+//  serve bypassare la RLS con chiavi speciali per quella parte.
+//  Il testo dell'informativa e le checkbox di consenso non sono più
+//  hardcoded qui: vengono letti a runtime da public.consent_config, così
+//  un aggiornamento del testo legale non richiede più ridistribuire questa
+//  funzione — basta aggiornare la riga (dalla schermata admin "Consenso
+//  sanitario" in GESPP).
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -11,16 +17,6 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-const INFORMATIVA = {
-  versione: "v1.0-bozza",
-  testo: "BOZZA NON VALIDA — inserire qui il testo dell'informativa fornito dal legale. Segnaposto a soli fini di test tecnico.",
-  punti: [
-    { chiave: "informativa", etichetta: "Ho letto e compreso l'informativa." },
-    { chiave: "trattamento", etichetta: "Acconsento al trattamento dei miei dati relativi alla salute." },
-    { chiave: "revoca",      etichetta: "So di poter revocare il consenso in qualsiasi momento, senza conseguenze." },
-  ],
 };
 
 Deno.serve(async (req) => {
@@ -37,6 +33,16 @@ Deno.serve(async (req) => {
       Deno.env.get("SERVICE_KEY")!
     );
 
+    const { data: config, error: cfgError } = await supabase
+      .from("consent_config")
+      .select("versione, informativa_pdf_url, consenso_pdf_url, punti")
+      .eq("id", 1)
+      .single();
+    if (cfgError || !config) {
+      return json({ errore: "Configurazione del consenso non disponibile. Contatta l'amministratore." }, 500);
+    }
+    const punti: { chiave: string; etichetta: string }[] = Array.isArray(config.punti) ? config.punti : [];
+
     if (azione === "leggi") {
       const { data, error } = await supabase.rpc("consenso_leggi", { p_token: token });
       if (error) return json({ errore: "Errore: " + error.message }, 500);
@@ -44,11 +50,19 @@ Deno.serve(async (req) => {
         return json({ errore: "Link non valido, scaduto o già utilizzato." }, 404);
       }
       const nomePersona = `${data[0].nome} ${data[0].cognome}`;
-      return json({ persona: nomePersona, informativa: INFORMATIVA }, 200);
+      return json({
+        persona: nomePersona,
+        informativa: {
+          versione: config.versione,
+          punti,
+          informativaPdfUrl: config.informativa_pdf_url || null,
+          consensoPdfUrl: config.consenso_pdf_url || null,
+        },
+      }, 200);
     }
 
     if (azione === "firma") {
-      const tutteAccettate = INFORMATIVA.punti.every((p) => spunte && spunte[p.chiave] === true);
+      const tutteAccettate = punti.length > 0 && punti.every((p) => spunte && spunte[p.chiave] === true);
       if (!tutteAccettate) return json({ errore: "Devi accettare tutti i punti per procedere." }, 400);
       if (!firma) return json({ errore: "La firma è obbligatoria." }, 400);
 
@@ -57,7 +71,7 @@ Deno.serve(async (req) => {
         p_spunte: spunte,
         p_firma: firma,
         p_canale: canale === "presenza" ? "presenza" : "remoto",
-        p_versione: INFORMATIVA.versione,
+        p_versione: config.versione,
       });
       if (error) {
         const msg = (error.message || "").includes("TOKEN_NON_VALIDO")

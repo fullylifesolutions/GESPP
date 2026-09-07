@@ -352,7 +352,7 @@ async function doLogout(){ await sb.auth.signOut(); ME=null; el('email').value='
 // ---------- TABS ----------
 function renderTabs(){
   const adminTabs = ME.ruolo==='admin'
-    ? '<div class="nav-tab" data-tab="catalogo">Catalogo patologie</div><div class="nav-tab" data-tab="statistiche">Statistiche</div>'
+    ? '<div class="nav-tab" data-tab="catalogo">Catalogo patologie</div><div class="nav-tab" data-tab="statistiche">Statistiche</div><div class="nav-tab" data-tab="consenso-config">Consenso sanitario</div>'
     : '';
   el('nav-tabs').innerHTML = `
     <div class="nav-tab" data-tab="aziende">Aziende</div>
@@ -369,6 +369,7 @@ function goTab(tab){
   else if(tab==='calendario-lp') viewFreelanceCalendar();
   else if(tab==='catalogo') viewCatalogo();
   else if(tab==='statistiche') viewStatistiche();
+  else if(tab==='consenso-config') viewConsentConfig();
 }
 
 // ---------- ELENCO AZIENDE ----------
@@ -1519,6 +1520,112 @@ async function runDetail(f){
     ${data.map(d=>`<div class="sub-item"><div class="m"><div>${escapeHtml(d.persona)} ${d.azienda?'<span style="color:var(--ink-soft);font-size:12px;">· '+escapeHtml(d.azienda)+'</span>':''}</div>
     <div class="d">${escapeHtml(d.patologia)} · ${[d.lateralita,d.bisogni,d.foglietto,d.intensita,d.reciprocita].filter(Boolean).join(', ')} · ${d.n_incontri||0} incontri${d.ultimo_incontro?' · ultimo '+fmtDate(d.ultimo_incontro.slice(0,10)):''}</div></div></div>`).join('')}
   </div>`;
+}
+
+// ---------- CONSENSO SANITARIO — configurazione (solo admin) ----------
+// Informativa/consenso in PDF (bucket Storage "consensi") + checkbox
+// mostrate in consenso_pagina.html, lette a runtime dalla Edge Function
+// "consenso". Aggiornare qui non richiede toccare codice ne' ridistribuire
+// nulla — è esattamente il punto di questa schermata.
+let CONSENT_CONFIG=null;
+async function viewConsentConfig(){
+  if(ME.ruolo!=='admin'){ goTab('aziende'); return; }
+  el('crumbs').innerHTML='Consenso sanitario';
+  el('content').innerHTML=`
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Consenso sanitario</h2>
+    <p class="panel-sub">Informativa, modulo di consenso e checkbox mostrate a chi firma da remoto (consenso_pagina.html).</p></div></div>
+    <div class="section" id="cc-body"><div class="spinner">Caricamento…</div></div>`;
+  await loadConsentConfig();
+}
+async function loadConsentConfig(){
+  const box=el('cc-body');
+  const {data,error}=await sb.from('consent_config').select('*').eq('id',1).single();
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  CONSENT_CONFIG=data;
+  renderConsentConfig();
+}
+function renderConsentConfig(){
+  const c=CONSENT_CONFIG;
+  el('cc-body').innerHTML=`
+    <div class="sh"><span class="st">Versione</span></div>
+    <input type="text" id="cc-versione" value="${escapeHtml(c.versione||'')}" style="max-width:220px;">
+
+    <div class="sh" style="margin-top:18px;"><span class="st">Documenti PDF</span></div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:13px;color:var(--ink-soft);margin-bottom:4px;">Informativa</label>
+      ${c.informativa_pdf_url?`<div style="margin-bottom:6px;font-size:13px;"><a href="${c.informativa_pdf_url}" target="_blank" rel="noopener">${c.informativa_pdf_url}</a></div>`:'<div style="margin-bottom:6px;color:var(--ink-soft);font-size:13px;">Nessun file caricato — la pagina di firma mostrerà un avviso finché non ne carichi uno.</div>'}
+      <input type="file" id="cc-file-informativa" accept="application/pdf">
+      <button class="ghost small" id="cc-upload-informativa">Carica/sostituisci</button>
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:13px;color:var(--ink-soft);margin-bottom:4px;">Modulo di consenso (opzionale, solo se distinto dall'informativa)</label>
+      ${c.consenso_pdf_url?`<div style="margin-bottom:6px;font-size:13px;"><a href="${c.consenso_pdf_url}" target="_blank" rel="noopener">${c.consenso_pdf_url}</a></div>`:'<div style="margin-bottom:6px;color:var(--ink-soft);font-size:13px;">Nessun file caricato.</div>'}
+      <input type="file" id="cc-file-consenso" accept="application/pdf">
+      <button class="ghost small" id="cc-upload-consenso">Carica/sostituisci</button>
+    </div>
+
+    <div class="sh" style="margin-top:18px;"><span class="st">Checkbox di consenso</span></div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px;">Il testo che la persona deve spuntare singolarmente per poter firmare.</p>
+    <div id="cc-punti-list"></div>
+    <button class="ghost small" id="cc-add-punto" style="margin-top:8px;">+ Aggiungi checkbox</button>
+
+    <div id="cc-msg" class="msg" style="margin-top:18px;"></div>
+    <button class="primary" id="cc-save" style="margin-top:6px;">Salva configurazione</button>`;
+  renderPuntiList();
+  el('cc-upload-informativa').addEventListener('click',()=>uploadConsentPdf('informativa'));
+  el('cc-upload-consenso').addEventListener('click',()=>uploadConsentPdf('consenso'));
+  el('cc-add-punto').addEventListener('click',()=>{
+    CONSENT_CONFIG.punti=[...(CONSENT_CONFIG.punti||[]),{chiave:'punto_'+Date.now(),etichetta:''}];
+    renderPuntiList();
+  });
+  el('cc-save').addEventListener('click', saveConsentConfig);
+}
+function renderPuntiList(){
+  const box=el('cc-punti-list');
+  const punti=CONSENT_CONFIG.punti||[];
+  box.innerHTML = punti.length ? punti.map((p,i)=>`
+    <div class="chk-row" style="align-items:center;">
+      <input type="text" class="cc-punto-etichetta" data-i="${i}" value="${escapeHtml(p.etichetta||'')}" style="flex:1;margin:0;" placeholder="Testo della checkbox">
+      <button class="ghost small danger cc-punto-del" data-i="${i}">Elimina</button>
+    </div>`).join('') : '<div style="font-size:13px;color:var(--ink-soft);">Nessuna checkbox configurata — servirà almeno una prima di poter salvare.</div>';
+  box.querySelectorAll('.cc-punto-etichetta').forEach(inp=>inp.addEventListener('input',e=>{
+    CONSENT_CONFIG.punti[+e.target.dataset.i].etichetta=e.target.value;
+  }));
+  box.querySelectorAll('.cc-punto-del').forEach(btn=>btn.addEventListener('click',()=>{
+    CONSENT_CONFIG.punti.splice(+btn.dataset.i,1); renderPuntiList();
+  }));
+}
+async function uploadConsentPdf(kind){
+  const input=el('cc-file-'+kind);
+  const file=input.files[0];
+  if(!file){ alert('Seleziona prima un file PDF.'); return; }
+  if(file.type!=='application/pdf'){ alert('Il file deve essere un PDF.'); return; }
+  // stesso percorso ogni volta (informativa.pdf / consenso.pdf): il link
+  // pubblico resta identico dopo un aggiornamento, upsert lo sostituisce.
+  const path=kind+'.pdf';
+  const {error}=await sb.storage.from('consensi').upload(path,file,{upsert:true,contentType:'application/pdf'});
+  if(error){ alert('Errore nel caricamento: '+error.message); return; }
+  const {data:pub}=sb.storage.from('consensi').getPublicUrl(path);
+  CONSENT_CONFIG[kind+'_pdf_url']=pub.publicUrl;
+  renderConsentConfig();
+}
+async function saveConsentConfig(){
+  const msg=el('cc-msg'); msg.className='msg';
+  const versione=el('cc-versione').value.trim();
+  if(!versione){ msg.textContent='La versione è obbligatoria.'; msg.className='msg err'; return; }
+  const punti=(CONSENT_CONFIG.punti||[]).filter(p=>p.etichetta&&p.etichetta.trim());
+  if(!punti.length){ msg.textContent='Serve almeno una checkbox di consenso.'; msg.className='msg err'; return; }
+  const btn=el('cc-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const {error}=await sb.from('consent_config').update({
+    versione, punti,
+    informativa_pdf_url: CONSENT_CONFIG.informativa_pdf_url||null,
+    consenso_pdf_url: CONSENT_CONFIG.consenso_pdf_url||null,
+    aggiornato_da: ME.id, aggiornato_il: new Date().toISOString()
+  }).eq('id',1);
+  btn.disabled=false; btn.textContent='Salva configurazione';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  msg.textContent='Configurazione salvata.'; msg.className='msg ok';
+  await loadConsentConfig();
 }
 
 function initials(n,c){ return ((n||'').charAt(0)+(c||'').charAt(0)).toUpperCase(); }

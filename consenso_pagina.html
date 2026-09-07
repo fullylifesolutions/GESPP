@@ -83,12 +83,21 @@ function errore(testo){
 function mostraForm(persona, info){
   const punti = info.punti.map((p,i)=>`
     <label class="chk"><input type="checkbox" class="punto" data-k="${p.chiave}"> <span>${escapeHtml(p.etichetta)}</span></label>`).join('');
+  // il testo lungo dell'informativa vive ora come PDF caricato dall'admin
+  // (GESPP → Consenso sanitario), non più incollato in pagina: qui si
+  // mostra solo il link, o un avviso se non è stato ancora caricato.
+  const docLinks = [];
+  if(info.informativaPdfUrl) docLinks.push(`<a href="${info.informativaPdfUrl}" target="_blank" rel="noopener">📄 Leggi l'informativa (PDF)</a>`);
+  if(info.consensoPdfUrl) docLinks.push(`<a href="${info.consensoPdfUrl}" target="_blank" rel="noopener">📄 Leggi il modulo di consenso (PDF)</a>`);
+  const docsHtml = docLinks.length
+    ? `<div class="info-box" style="max-height:none;white-space:normal;">${docLinks.join('<br><br>')}</div>`
+    : `<div class="info-box" style="max-height:none;">Informativa non ancora disponibile. Contatta il tuo consulente prima di procedere.</div>`;
   stage.innerHTML = `
     <div class="card">
       <h1>Consenso al trattamento</h1>
       <p class="sub">Documento per <strong>${escapeHtml(persona)}</strong></p>
       <div id="form-msg" class="msg"></div>
-      <div class="info-box">${escapeHtml(info.testo)}</div>
+      ${docsHtml}
       ${punti}
       <div class="firma-label">Firma</div>
       <p class="firma-hint">Firma nel riquadro qui sotto usando il dito o il mouse.</p>

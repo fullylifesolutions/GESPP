@@ -279,6 +279,35 @@ create index idx_audit_user on public.audit_log(user_id);
 create index idx_audit_time on public.audit_log(created_at);
 
 -- ----------------------------------------------------------------------------
+-- CONFIGURAZIONE CONSENSO SANITARIO (informativa + checkbox di consenso)
+-- Riga singola (id=1), come booking_email_config nello schema slot-booking.
+-- Letta a runtime dalla Edge Function "consenso" invece di essere hardcoded
+-- nel suo sorgente: aggiornare il testo legale non richiede più un
+-- redeploy. informativa_pdf_url/consenso_pdf_url puntano a file nel bucket
+-- Storage pubblico "consensi" (sola lettura per chiunque, upload solo
+-- admin) — pagina anonima consenso_pagina.html deve poterli aprire senza
+-- login. Entrambi nullable: un solo documento o due, a seconda di come il
+-- legale struttura i contenuti.
+-- ----------------------------------------------------------------------------
+create table public.consent_config (
+    id                   integer primary key default 1 check (id = 1),
+    versione             text not null default 'v1.0',
+    informativa_pdf_url  text,
+    consenso_pdf_url     text,
+    punti                jsonb not null default '[]',  -- [{chiave, etichetta}, ...]
+    aggiornato_da        uuid references public.app_users(id),
+    aggiornato_il        timestamptz not null default now()
+);
+
+-- Bucket Storage per i PDF di informativa/consenso: pubblico in lettura
+-- (consenso_pagina.html e' anonima, deve poter aprire il link senza
+-- login), scrittura riservata ad admin (policy su storage.objects nel
+-- file 2). RLS su storage.objects e' gia' attiva di default su Supabase.
+insert into storage.buckets (id, name, public)
+values ('consensi', 'consensi', true)
+on conflict (id) do nothing;
+
+-- ----------------------------------------------------------------------------
 -- ABILITA RLS SU TUTTE LE TABELLE (le policy sono nel file 2)
 -- ----------------------------------------------------------------------------
 alter table public.app_users              enable row level security;
@@ -296,6 +325,7 @@ alter table public.self_reports           enable row level security;
 alter table public.meetings               enable row level security;
 alter table public.person_company_history enable row level security;
 alter table public.audit_log              enable row level security;
+alter table public.consent_config         enable row level security;
 
 -- ============================================================================
 --  FINE FILE 1. Procedere con gespp_2_funzioni_policy.sql

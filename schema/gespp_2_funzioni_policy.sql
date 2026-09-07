@@ -436,6 +436,31 @@ create policy pch_write on public.person_company_history
 create policy audit_admin_read on public.audit_log
     for select using (public.is_admin());
 
+-- consent_config: letta da qualunque utente loggato (contenuto non
+-- sensibile, serve alla schermata di gestione), scritta solo da admin —
+-- e' un contenuto legale valido per l'intero sistema, stesso criterio gia'
+-- usato per gli emittenti fiscali nel gestionale. "to authenticated"
+-- esplicito su entrambe: senza, si applicherebbero anche ad anon, che non
+-- deve toccare questa tabella (la Edge Function la legge con la service
+-- role, bypassando comunque la RLS).
+create policy consent_config_read on public.consent_config
+    for select to authenticated using (true);
+create policy consent_config_write on public.consent_config
+    for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- storage.objects per il bucket "consensi": lettura pubblica (anche
+-- anonima, consenso_pagina.html non ha login), scrittura/sostituzione/
+-- cancellazione solo admin.
+create policy consensi_public_read on storage.objects
+    for select to anon, authenticated using (bucket_id = 'consensi');
+create policy consensi_admin_insert on storage.objects
+    for insert to authenticated with check (bucket_id = 'consensi' and public.is_admin());
+create policy consensi_admin_update on storage.objects
+    for update to authenticated using (bucket_id = 'consensi' and public.is_admin())
+    with check (bucket_id = 'consensi' and public.is_admin());
+create policy consensi_admin_delete on storage.objects
+    for delete to authenticated using (bucket_id = 'consensi' and public.is_admin());
+
 -- ============================================================================
 --  FINE FILE 2. Procedere con gespp_3_dati_iniziali.sql
 -- ============================================================================
