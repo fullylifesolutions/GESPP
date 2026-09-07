@@ -308,6 +308,97 @@ values ('consensi', 'consensi', true)
 on conflict (id) do nothing;
 
 -- ----------------------------------------------------------------------------
+-- WORK CALENDAR — pianificazione attivita' per consulente, condivisa per
+-- taggatura (dominio "Calendario/Calendar Work" della cornice a sei).
+-- Vive qui (GESPP) e non nel gestionale fatturazione: l'accesso al
+-- gestionale richiede un emittente fiscale selezionabile (can_bill()),
+-- quindi un consulente senza puo_fatturare=true non riuscirebbe mai a
+-- vederlo la'. GESPP invece mostra i suoi tab a qualunque app_users
+-- attivo, senza nessun cancello simile.
+--
+-- Modello: ogni consulente ha il proprio calendario privato (task,
+-- backlog, categorie) — owner_id. Un task puo' taggare altri consulenti
+-- come "operatori": chi e' taggato (sul task o su un suo subtask) entra
+-- a far parte del "team" di quel task e puo' vederlo, vedere gli altri
+-- taggati, leggere/scrivere aggiornamenti condivisi (wc_task_updates).
+-- Cambiare lo stato di un subtask e' riservato a chi e' taggato su QUEL
+-- subtask specifico, non all'intero team del task. Struttura e proprieta'
+-- del task (nome/data/punti/taggature) restano del proprietario.
+-- ----------------------------------------------------------------------------
+create table public.wc_categories (
+    id         uuid primary key default gen_random_uuid(),
+    owner_id   uuid not null references public.app_users(id) on delete cascade,
+    nome       text not null,
+    colore     text not null default '#7c6fcd',
+    created_at timestamptz not null default now()
+);
+
+create table public.wc_backlog (
+    id           uuid primary key default gen_random_uuid(),
+    owner_id     uuid not null references public.app_users(id) on delete cascade,
+    nome         text not null,
+    pts          integer not null default 5,
+    categoria_id uuid references public.wc_categories(id) on delete set null,
+    note         text,
+    created_at   timestamptz not null default now()
+);
+
+create table public.wc_tasks (
+    id              uuid primary key default gen_random_uuid(),
+    owner_id        uuid not null references public.app_users(id) on delete cascade,
+    nome            text not null,
+    data            date not null,
+    pts             integer not null default 5,
+    categoria_id    uuid references public.wc_categories(id) on delete set null,
+    stato           text not null default 'todo' check (stato in ('todo','doing','done')),
+    ricorrenza      text not null default 'none' check (ricorrenza in ('none','daily','weekly','monthly')),
+    ricorrenza_fine date,
+    note            text,
+    -- collegamento al backlog di provenienza, se pianificato da li'
+    -- (una direzione sola: "e' pianificato?" si deduce cercando se un task
+    -- referenzia questo backlog_id, non serve il puntatore inverso)
+    backlog_id      uuid references public.wc_backlog(id) on delete set null,
+    created_at      timestamptz not null default now(),
+    updated_at      timestamptz not null default now()
+);
+create index idx_wc_tasks_owner on public.wc_tasks(owner_id);
+create index idx_wc_tasks_data  on public.wc_tasks(data);
+
+create table public.wc_task_operators (
+    task_id     uuid not null references public.wc_tasks(id) on delete cascade,
+    operator_id uuid not null references public.app_users(id) on delete cascade,
+    primary key (task_id, operator_id)
+);
+
+create table public.wc_subtasks (
+    id         uuid primary key default gen_random_uuid(),
+    task_id    uuid not null references public.wc_tasks(id) on delete cascade,
+    nome       text not null,
+    pts        integer default 0,
+    stato      text not null default 'todo' check (stato in ('todo','doing','done')),
+    ordine     integer not null default 0,
+    created_at timestamptz not null default now()
+);
+create index idx_wc_subtasks_task on public.wc_subtasks(task_id);
+
+create table public.wc_subtask_operators (
+    subtask_id  uuid not null references public.wc_subtasks(id) on delete cascade,
+    operator_id uuid not null references public.app_users(id) on delete cascade,
+    primary key (subtask_id, operator_id)
+);
+
+-- Log condiviso di aggiornamenti sul task, visibile e scrivibile da tutto
+-- il team (proprietario + taggati), non solo dal proprietario.
+create table public.wc_task_updates (
+    id         uuid primary key default gen_random_uuid(),
+    task_id    uuid not null references public.wc_tasks(id) on delete cascade,
+    author_id  uuid not null references public.app_users(id) on delete cascade,
+    testo      text not null,
+    created_at timestamptz not null default now()
+);
+create index idx_wc_updates_task on public.wc_task_updates(task_id);
+
+-- ----------------------------------------------------------------------------
 -- ABILITA RLS SU TUTTE LE TABELLE (le policy sono nel file 2)
 -- ----------------------------------------------------------------------------
 alter table public.app_users              enable row level security;
@@ -326,6 +417,13 @@ alter table public.meetings               enable row level security;
 alter table public.person_company_history enable row level security;
 alter table public.audit_log              enable row level security;
 alter table public.consent_config         enable row level security;
+alter table public.wc_categories          enable row level security;
+alter table public.wc_backlog             enable row level security;
+alter table public.wc_tasks               enable row level security;
+alter table public.wc_task_operators      enable row level security;
+alter table public.wc_subtasks            enable row level security;
+alter table public.wc_subtask_operators   enable row level security;
+alter table public.wc_task_updates        enable row level security;
 
 -- ============================================================================
 --  FINE FILE 1. Procedere con gespp_2_funzioni_policy.sql

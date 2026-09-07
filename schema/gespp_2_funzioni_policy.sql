@@ -475,6 +475,119 @@ create policy consensi_admin_update on storage.objects
 create policy consensi_admin_delete on storage.objects
     for delete to authenticated using (bucket_id = 'consensi' and public.is_admin());
 
+-- ----------------------------------------------------------------------------
+-- WORK CALENDAR — funzione e policy (tabelle wc_* nel file 1).
+-- Chi fa parte del "team" di un task: il proprietario, chi e' taggato sul
+-- task, chi e' taggato su uno dei suoi subtask. security definer perche'
+-- valutata dentro le policy di piu' tabelle diverse (stesso motivo di
+-- can_access_person sopra: evita di dover dare grant incrociati fra le
+-- tabelle wc_* solo per farle leggere l'un l'altra durante la valutazione
+-- della RLS).
+-- ----------------------------------------------------------------------------
+create or replace function public.wc_can_see_task(p_task_id uuid)
+returns boolean language sql stable security definer set search_path = public
+as $$
+    select exists(
+        select 1 from public.wc_tasks t
+        where t.id = p_task_id
+          and (
+            t.owner_id = auth.uid()
+            or public.is_admin()
+            or exists(select 1 from public.wc_task_operators o where o.task_id = t.id and o.operator_id = auth.uid())
+            or exists(
+                select 1 from public.wc_subtasks s
+                join public.wc_subtask_operators so on so.subtask_id = s.id
+                where s.task_id = t.id and so.operator_id = auth.uid()
+            )
+          )
+    );
+$$;
+grant execute on function public.wc_can_see_task(uuid) to authenticated;
+
+-- categorie/backlog: solo il proprietario, calendario privato.
+create policy wc_categories_owner on public.wc_categories
+    for all to authenticated using (owner_id = auth.uid() or public.is_admin())
+    with check (owner_id = auth.uid() or public.is_admin());
+create policy wc_backlog_owner on public.wc_backlog
+    for all to authenticated using (owner_id = auth.uid() or public.is_admin())
+    with check (owner_id = auth.uid() or public.is_admin());
+
+-- Il team di un task deve poter leggere nome/colore delle categorie usate
+-- da quel task — non l'intero elenco categorie del proprietario, solo
+-- quelle effettivamente referenziate da un task che puo' vedere. Sola
+-- lettura: nessuna policy di scrittura aggiuntiva, resta owner-only.
+create policy wc_categories_team_read on public.wc_categories
+    for select to authenticated using (
+        exists(select 1 from public.wc_tasks t where t.categoria_id = wc_categories.id and public.wc_can_see_task(t.id))
+    );
+
+-- task: il proprietario ha pieno controllo; il team lo vede soltanto —
+-- nessuna policy di update/delete per i taggati sulla riga task stessa,
+-- la struttura resta del proprietario.
+create policy wc_tasks_owner_all on public.wc_tasks
+    for all to authenticated using (owner_id = auth.uid() or public.is_admin())
+    with check (owner_id = auth.uid() or public.is_admin());
+create policy wc_tasks_team_read on public.wc_tasks
+    for select to authenticated using (public.wc_can_see_task(id));
+
+-- taggature: il proprietario del task le gestisce; il team vede chi altro
+-- e' taggato (utile per sapere con chi si sta collaborando).
+create policy wc_task_operators_owner_write on public.wc_task_operators
+    for all to authenticated using (
+        exists(select 1 from public.wc_tasks t where t.id = task_id and (t.owner_id = auth.uid() or public.is_admin()))
+    ) with check (
+        exists(select 1 from public.wc_tasks t where t.id = task_id and (t.owner_id = auth.uid() or public.is_admin()))
+    );
+create policy wc_task_operators_team_read on public.wc_task_operators
+    for select to authenticated using (public.wc_can_see_task(task_id));
+
+-- subtask: il proprietario del task ha pieno controllo (struttura,
+-- creazione, cancellazione). Il team lo vede in lettura. Lo stato invece
+-- lo puo' cambiare solo chi e' taggato su QUEL subtask specifico (non
+-- tutto il team del task) — coerente con "aggiornamenti sulla propria
+-- parte".
+create policy wc_subtasks_owner_all on public.wc_subtasks
+    for all to authenticated using (
+        exists(select 1 from public.wc_tasks t where t.id = task_id and (t.owner_id = auth.uid() or public.is_admin()))
+    ) with check (
+        exists(select 1 from public.wc_tasks t where t.id = task_id and (t.owner_id = auth.uid() or public.is_admin()))
+    );
+create policy wc_subtasks_team_read on public.wc_subtasks
+    for select to authenticated using (public.wc_can_see_task(task_id));
+create policy wc_subtasks_assigned_update on public.wc_subtasks
+    for update to authenticated using (
+        exists(select 1 from public.wc_subtask_operators so where so.subtask_id = id and so.operator_id = auth.uid())
+    ) with check (
+        exists(select 1 from public.wc_subtask_operators so where so.subtask_id = id and so.operator_id = auth.uid())
+    );
+
+create policy wc_subtask_operators_owner_write on public.wc_subtask_operators
+    for all to authenticated using (
+        exists(select 1 from public.wc_subtasks s join public.wc_tasks t on t.id = s.task_id
+               where s.id = subtask_id and (t.owner_id = auth.uid() or public.is_admin()))
+    ) with check (
+        exists(select 1 from public.wc_subtasks s join public.wc_tasks t on t.id = s.task_id
+               where s.id = subtask_id and (t.owner_id = auth.uid() or public.is_admin()))
+    );
+create policy wc_subtask_operators_team_read on public.wc_subtask_operators
+    for select to authenticated using (
+        exists(select 1 from public.wc_subtasks s where s.id = subtask_id and public.wc_can_see_task(s.task_id))
+    );
+
+-- aggiornamenti: tutto il team del task legge e scrive (sempre a nome
+-- proprio — mai a nome di qualcun altro); solo l'autore (o l'admin) elimina.
+create policy wc_task_updates_team_read on public.wc_task_updates
+    for select to authenticated using (public.wc_can_see_task(task_id));
+create policy wc_task_updates_team_insert on public.wc_task_updates
+    for insert to authenticated with check (author_id = auth.uid() and public.wc_can_see_task(task_id));
+create policy wc_task_updates_author_delete on public.wc_task_updates
+    for delete to authenticated using (author_id = auth.uid() or public.is_admin());
+
+grant select, insert, update, delete on
+    public.wc_categories, public.wc_backlog, public.wc_tasks, public.wc_task_operators,
+    public.wc_subtasks, public.wc_subtask_operators, public.wc_task_updates
+    to authenticated;
+
 -- ============================================================================
 --  FINE FILE 2. Procedere con gespp_3_dati_iniziali.sql
 -- ============================================================================
