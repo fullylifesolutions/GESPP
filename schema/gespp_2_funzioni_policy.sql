@@ -13,6 +13,47 @@
 -- ============================================================================
 
 -- ============================================================================
+--  0. INFRASTRUTTURA DI SICUREZZA: RLS AUTOMATICA SU NUOVE TABELLE
+--
+--  Aggiunto il 2026-09-08 dopo un audit completo file-vs-DB: questo event
+--  trigger esisteva in produzione da tempo (verificato con l'utente) ma non
+--  era mai stato versionato in nessun file, vecchio o nuovo — non "perso nel
+--  consolidamento", semplicemente mai messo in un file. Recuperato con
+--  pg_get_functiondef() sul DB reale. Abilita automaticamente la RLS su ogni
+--  nuova tabella creata nello schema public, così una CREATE TABLE non può
+--  restare per errore senza RLS.
+-- ============================================================================
+create or replace function public.rls_auto_enable()
+returns event_trigger language plpgsql security definer set search_path = pg_catalog
+as $$
+declare
+  cmd record;
+begin
+  for cmd in
+    select *
+    from pg_event_trigger_ddl_commands()
+    where command_tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+      and object_type in ('table','partitioned table')
+  loop
+     if cmd.schema_name is not null and cmd.schema_name in ('public') and cmd.schema_name not in ('pg_catalog','information_schema') and cmd.schema_name not like 'pg_toast%' and cmd.schema_name not like 'pg_temp%' then
+      begin
+        execute format('alter table if exists %s enable row level security', cmd.object_identity);
+        raise log 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
+      exception
+        when others then
+          raise log 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
+      end;
+     else
+        raise log 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
+     end if;
+  end loop;
+end;
+$$;
+
+create event trigger ensure_rls on ddl_command_end
+    execute function public.rls_auto_enable();
+
+-- ============================================================================
 --  1. FUNZIONI DI RUOLO
 -- ============================================================================
 create or replace function public.my_role()
@@ -29,7 +70,9 @@ create or replace function public.is_admin()
 returns boolean language sql stable security definer set search_path = public
 as $$ select public.my_role() = 'admin'; $$;
 
-create or replace function public.current_role()
+-- nome tra virgolette: current_role e' una parola riservata SQL (come
+-- current_user), serve per poterla usare come nome di funzione.
+create or replace function public."current_role"()
 returns user_role language sql stable security definer set search_path = public
 as $$ select public.my_role(); $$;
 
@@ -125,27 +168,38 @@ create trigger trg_audit_health   after insert or update or delete on public.hea
 create trigger trg_audit_selfrep  after insert or update or delete on public.self_reports
     for each row execute function public.fn_audit_write('sensitive');
 create trigger trg_audit_meetings after insert or update or delete on public.meetings
-    for each row execute function public.fn_audit_write('full');
+    for each row execute function public.fn_audit_write('sensitive');
 
 -- trigger storico passaggi azienda
-create or replace function public.fn_track_company()
-returns trigger language plpgsql security definer set search_path = public set row_security = off
+create or replace function public.fn_track_company_change()
+returns trigger language plpgsql security definer set search_path = public
 as $$
 begin
-    if TG_OP = 'INSERT' and NEW.company_id is not null then
-        insert into public.person_company_history (person_id, company_id) values (NEW.id, NEW.company_id);
-    elsif TG_OP = 'UPDATE' and NEW.company_id is distinct from OLD.company_id then
-        update public.person_company_history set data_fine = now()
-            where person_id = NEW.id and data_fine is null;
-        if NEW.company_id is not null then
-            insert into public.person_company_history (person_id, company_id) values (NEW.id, NEW.company_id);
-        end if;
+    if TG_OP = 'INSERT' then
+        insert into public.person_company_history (person_id, company_id, tipo, data_inizio)
+        values (NEW.id, NEW.company_id, NEW.tipo, current_date);
+        return NEW;
     end if;
+
+    -- UPDATE: agisci solo se cambia davvero azienda o tipo
+    if NEW.company_id is distinct from OLD.company_id
+       or NEW.tipo is distinct from OLD.tipo then
+
+        -- chiudi il periodo attualmente aperto
+        update public.person_company_history
+           set data_fine = current_date
+         where person_id = NEW.id and data_fine is null;
+
+        -- apri il nuovo periodo
+        insert into public.person_company_history (person_id, company_id, tipo, data_inizio)
+        values (NEW.id, NEW.company_id, NEW.tipo, current_date);
+    end if;
+
     return NEW;
 end; $$;
 
 create trigger trg_track_company after insert or update on public.persons
-    for each row execute function public.fn_track_company();
+    for each row execute function public.fn_track_company_change();
 
 -- ============================================================================
 --  4. FUNZIONI APPLICATIVE (lettura tracciata, manutenzione, consenso)

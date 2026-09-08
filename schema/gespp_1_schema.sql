@@ -24,7 +24,7 @@
 create type user_role      as enum ('admin', 'consulente', 'consulente_limitato');
 create type person_type    as enum ('dipendente', 'professionista');
 create type reciprocita_t  as enum ('Prenditore', 'Prenditore/donatore', 'Donatore/prenditore', 'Donatore');
-create type consent_status as enum ('in_attesa', 'attivo', 'revocato');
+create type consent_status as enum ('attivo', 'revocato', 'in_attesa');
 
 -- ----------------------------------------------------------------------------
 -- UTENTI APPLICATIVI
