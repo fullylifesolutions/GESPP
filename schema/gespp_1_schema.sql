@@ -49,7 +49,8 @@ create table public.companies (
     codice_fiscale text,
     settore        text,
     note           text,
-    created_at     timestamptz not null default now()
+    created_at     timestamptz not null default now(),
+    updated_at     timestamptz not null default now()
 );
 
 create table public.company_sites (
@@ -96,7 +97,8 @@ create table public.persons (
     professione     text,
     -- archiviazione (patch14)
     archiviata      boolean not null default false,
-    created_at      timestamptz not null default now()
+    created_at      timestamptz not null default now(),
+    updated_at      timestamptz not null default now()
 );
 
 create index idx_persons_company on public.persons(company_id);
@@ -105,17 +107,17 @@ create index idx_persons_company on public.persons(company_id);
 -- ASSEGNAZIONI consulente <-> azienda / persona
 -- ----------------------------------------------------------------------------
 create table public.consultant_company (
-    id            uuid primary key default gen_random_uuid(),
     consultant_id uuid not null references public.app_users(id) on delete cascade,
     company_id    uuid not null references public.companies(id) on delete cascade,
-    unique (consultant_id, company_id)
+    created_at    timestamptz not null default now(),
+    primary key (consultant_id, company_id)
 );
 
 create table public.consultant_person (
-    id            uuid primary key default gen_random_uuid(),
     consultant_id uuid not null references public.app_users(id) on delete cascade,
     person_id     uuid not null references public.persons(id) on delete cascade,
-    unique (consultant_id, person_id)
+    created_at    timestamptz not null default now(),
+    primary key (consultant_id, person_id)
 );
 
 -- ----------------------------------------------------------------------------
@@ -155,13 +157,17 @@ create index idx_spp_person on public.spp_profiles(person_id);
 create index idx_spp_data   on public.spp_profiles(data_rilevazione);
 
 -- ----------------------------------------------------------------------------
--- CATALOGO PATOLOGIE  (patch02, senza categoria per patch10)
+-- CATALOGO PATOLOGIE  (patch02; nota: patch10 rimuoveva 'categoria' ma non
+-- risulta applicata in produzione — verificato sul DB reale il 2026-09-08,
+-- 'categoria' e 'codice_standard' sono ancora presenti)
 -- ----------------------------------------------------------------------------
 create table public.pathologies (
-    id            uuid primary key default gen_random_uuid(),
-    denominazione text not null unique,
-    attiva        boolean not null default true,
-    created_at    timestamptz not null default now()
+    id              uuid primary key default gen_random_uuid(),
+    denominazione   text not null unique,
+    codice_standard text,
+    categoria       text,
+    attiva          boolean not null default true,
+    created_at      timestamptz not null default now()
 );
 
 -- ----------------------------------------------------------------------------
@@ -256,8 +262,11 @@ create table public.person_company_history (
     id              uuid primary key default gen_random_uuid(),
     person_id       uuid not null references public.persons(id) on delete cascade,
     company_id      uuid references public.companies(id) on delete set null,
-    data_inizio     timestamptz not null default now(),
-    data_fine       timestamptz
+    tipo            person_type not null,
+    data_inizio     date not null default current_date,
+    data_fine       date,
+    note            text,
+    created_at      timestamptz not null default now()
 );
 
 create index idx_pch_person on public.person_company_history(person_id);
