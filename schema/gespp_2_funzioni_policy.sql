@@ -302,8 +302,27 @@ grant execute on function public.spp_patologia_dettaglio to authenticated;
 
 -- ============================================================================
 --  5. VISTA STATISTICA (senza categoria)
+--
+--  Decisione (2026-09-08): conteggi pieni, nessuna soppressione — chi accede
+--  ha comunque diritto ai dati individuali. La protezione è la restrizione
+--  d'accesso, su due livelli indipendenti:
+--    - security_invoker = true: la vista rispetta la RLS di health_records/
+--      spp_profiles invece di girare con i privilegi dell'owner (postgres),
+--      che altrimenti bypassano la RLS come qualunque owner/superuser — è il
+--      backstop strutturale, non negoziabile.
+--    - where public.is_admin(): restringe ulteriormente la funzionalità
+--      statistiche al solo ruolo amministratore (più stretto di quanto la
+--      sola RLS garantirebbe: un consulente non limitato con legami
+--      legittimi vedrebbe altrimenti un aggregato parziale sul suo
+--      sottoinsieme, non zero).
+--  Verificato sul DB reale il 2026-09-08: prima di questa versione la vista
+--  (insieme alla gemella orfana v_pathology_stats, mai referenziata dal
+--  frontend e rimossa) aveva reloptions null (nessun security_invoker) ed
+--  era leggibile da qualunque utente 'authenticated', aggregato completo
+--  incluso il breakdown per assi SPP — corretto qui.
 -- ============================================================================
-create or replace view public.v_spp_patologia_agg as
+create or replace view public.v_spp_patologia_agg
+with (security_invoker = true) as
 with ultima_spp as (
     select distinct on (person_id) person_id, asse1_sessualita, asse2_lateralita, asse3_bisogni,
         asse4_foglietto, asse5_intensita, asse6_reciprocita
@@ -315,6 +334,7 @@ select pat.denominazione,
 from public.health_records hr
 join public.pathologies pat on pat.id = hr.pathology_id
 join ultima_spp s on s.person_id = hr.person_id
+where public.is_admin()
 group by pat.denominazione, s.asse1_sessualita, s.asse2_lateralita, s.asse3_bisogni,
     s.asse4_foglietto, s.asse5_intensita, s.asse6_reciprocita;
 
