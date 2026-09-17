@@ -345,6 +345,46 @@
   <div class="modal-actions"><button class="ghost" id="mm-cancel">Annulla</button><button class="primary" id="mm-save">Salva</button></div>
 </div></div>
 
+<!-- MODAL TEAM (solo admin: creazione/modifica nome/descrizione/stato) -->
+<div class="modal-bg" id="modal-team"><div class="modal">
+  <h3 id="mt-title">Nuovo team</h3><div id="mt-msg" class="msg"></div>
+  <label>Nome *</label><input type="text" id="t-nome" placeholder="es. Percorso Leadership 2026">
+  <label>Descrizione</label><textarea id="t-descrizione" rows="2"></textarea>
+  <label class="chk-row" style="margin-bottom:14px;"><input type="checkbox" id="t-attivo" checked> Team attivo</label>
+  <div class="modal-actions"><button class="ghost" id="mt-cancel">Annulla</button><button class="primary" id="mt-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL ASSEGNAZIONE CONSULENTI AL TEAM (solo admin) -->
+<div class="modal-bg" id="modal-team-assign"><div class="modal">
+  <h3>Consulenti che gestiscono il team</h3>
+  <div id="ta-msg" class="msg"></div>
+  <div class="assign-box" style="margin-top:0;"><div class="ttl">Seleziona i consulenti</div><div id="ta-list"><div class="spinner">Caricamento…</div></div></div>
+  <div class="modal-actions"><button class="ghost" id="ta-cancel">Annulla</button><button class="primary" id="ta-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL AGGIUNGI MEMBRO AL TEAM -->
+<div class="modal-bg" id="modal-team-member"><div class="modal">
+  <h3>Aggiungi membro</h3>
+  <div id="tm-msg" class="msg"></div>
+  <label>Cerca persona (nome o cognome)</label>
+  <div style="display:flex;gap:8px;"><input type="text" id="tm-search" placeholder="es. Rossi" style="flex:1;"><button class="ghost small" id="tm-search-btn">Cerca</button></div>
+  <div id="tm-results" style="margin-top:10px;max-height:260px;overflow-y:auto;"></div>
+  <div class="modal-actions"><button class="ghost" id="tm-cancel">Chiudi</button></div>
+</div></div>
+
+<!-- MODAL INCONTRO DI GRUPPO -->
+<div class="modal-bg" id="modal-team-meeting"><div class="modal">
+  <h3 id="tmm-title">Nuovo incontro di gruppo</h3>
+  <div id="tmm-msg" class="msg"></div>
+  <div class="grid2">
+    <div><label>Data e ora *</label><input type="datetime-local" id="tm-dataora"></div>
+    <div><label>Durata (min)</label><input type="number" id="tm-durata" placeholder="es. 90"></div>
+  </div>
+  <label>Sintesi</label>
+  <textarea id="tm-sintesi" rows="3" placeholder="Temi affrontati, attività svolte…"></textarea>
+  <div class="modal-actions"><button class="ghost" id="tmm-cancel">Annulla</button><button class="primary" id="tmm-save">Salva</button></div>
+</div></div>
+
 <!-- MODAL SELF-REPORT -->
 <div class="modal-bg" id="modal-selfrep"><div class="modal">
   <h3 id="sr-title">Nuova nota</h3>
@@ -470,6 +510,8 @@ const ROLE_LABEL = { admin:'Amministratore', consulente:'Consulente', consulente
 let ME=null, EDIT_COMPANY=null, CURRENT_COMPANY=null, EDIT_SITE=null, EDIT_CONTACT=null;
 let EDIT_PERSON=null, PERSON_MODE='dipendente'; // 'dipendente' | 'professionista'
 let TAB='aziende';
+let CURRENT_TEAM=null, EDIT_TEAM=null, TEAM_ASSIGN_ID=null, EDIT_TEAM_MEETING=null;
+let TEAM_MEMBERS_CACHE=[]; // ultimo team_members_light caricato, per escludere i già-membri dal picker
 
 // ---------- LOGIN ----------
 async function doLogin(){
@@ -526,6 +568,7 @@ function renderTabs(){
     <div class="nav-tab" data-tab="professionisti">Professionisti</div>
     <div class="nav-tab" data-tab="calendario-lp">Calendario Professionisti</div>
     <div class="nav-tab" data-tab="mie-attivita">Le mie attività</div>
+    <div class="nav-tab" data-tab="team">Team</div>
     ${adminTabs}`;
   el('nav-tabs').querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>goTab(t.dataset.tab)));
 }
@@ -536,6 +579,7 @@ function goTab(tab){
   else if(tab==='professionisti') viewProfessionals();
   else if(tab==='calendario-lp') viewFreelanceCalendar();
   else if(tab==='mie-attivita') wcViewMyTasks();
+  else if(tab==='team') viewTeams();
   else if(tab==='catalogo') viewCatalogo();
   else if(tab==='statistiche') viewStatistiche();
   else if(tab==='consenso-config') viewConsentConfig();
@@ -1525,6 +1569,194 @@ async function delMeeting(id){
   if(error){ alert('Errore: '+error.message); return; }
   loadMeetings(CURRENT_PERSON);
 }
+
+// ---------- TEAM ----------
+async function viewTeams(){
+  CURRENT_TEAM=null; el('crumbs').innerHTML='Team';
+  const isAdmin=ME.ruolo==='admin';
+  el('content').innerHTML=`
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Team</h2>
+    <p class="panel-sub">${isAdmin?'Crea i team e assegnali ai consulenti che li gestiscono.':'I team che gestisci.'}</p></div>
+    ${isAdmin?'<button class="primary" id="new-team">+ Nuovo team</button>':''}</div>
+    <div class="list" id="team-list"><div class="spinner">Caricamento…</div></div>`;
+  if(isAdmin) el('new-team').addEventListener('click',()=>openTeamModal(null));
+  const {data,error}=await sb.from('teams').select('id,nome,descrizione,attivo').order('nome');
+  const list=el('team-list');
+  if(error){ list.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data.length){ list.innerHTML=`<div class="empty">${isAdmin?'Nessun team. Creane uno.':'Nessun team assegnato.'}</div>`; return; }
+  list.innerHTML=data.map(t=>`<div class="list-item" data-id="${t.id}" style="${t.attivo?'':'opacity:.55;'}"><div class="li-ic">👥</div>
+    <div class="li-main"><div class="t">${escapeHtml(t.nome)} ${t.attivo?'':'<span style="font-size:11px;color:var(--ink-soft);">(non attivo)</span>'}</div>
+    <div class="d">${escapeHtml(t.descrizione||'')||'—'}</div></div>
+    ${isAdmin?'<button class="ghost small edit-btn" data-id="'+t.id+'">Modifica</button> <button class="ghost small danger team-del" data-id="'+t.id+'" data-nome="'+escapeHtml(t.nome)+'">Elimina</button>':''}<span class="li-arrow">›</span></div>`).join('');
+  list.querySelectorAll('.list-item').forEach(item=>item.addEventListener('click',e=>{ if(e.target.classList.contains('edit-btn')||e.target.classList.contains('team-del'))return; enterTeam(item.dataset.id); }));
+  list.querySelectorAll('.edit-btn').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openTeamModal(b.dataset.id); }));
+  list.querySelectorAll('.team-del').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); delTeam(b.dataset.id,b.dataset.nome); }));
+}
+async function openTeamModal(id){
+  EDIT_TEAM=id; el('mt-msg').className='msg'; el('mt-title').textContent=id?'Modifica team':'Nuovo team';
+  el('t-nome').value=''; el('t-descrizione').value=''; el('t-attivo').checked=true;
+  if(id){ const {data:t}=await sb.from('teams').select('nome,descrizione,attivo').eq('id',id).single();
+    if(t){ el('t-nome').value=t.nome||''; el('t-descrizione').value=t.descrizione||''; el('t-attivo').checked=!!t.attivo; } }
+  el('modal-team').classList.add('open');
+}
+async function saveTeamModal(){
+  const msg=el('mt-msg'); msg.className='msg'; const nome=el('t-nome').value.trim();
+  if(!nome){ msg.textContent='Il nome è obbligatorio.'; msg.className='msg err'; return; }
+  const payload={nome, descrizione:el('t-descrizione').value.trim()||null, attivo:el('t-attivo').checked};
+  const btn=el('mt-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  let err;
+  if(EDIT_TEAM){ ({error:err}=await sb.from('teams').update(payload).eq('id',EDIT_TEAM)); }
+  else { ({error:err}=await sb.from('teams').insert(payload)); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  el('modal-team').classList.remove('open'); EDIT_TEAM=null; viewTeams();
+}
+async function delTeam(id,nome){
+  if(!confirm('Eliminare definitivamente il team "'+nome+'"?\n\nVerranno rimossi anche i membri, le assegnazioni e gli incontri di gruppo registrati. L\'operazione non è reversibile.')) return;
+  const {error}=await sb.from('teams').delete().eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  viewTeams();
+}
+
+async function enterTeam(id){
+  CURRENT_TEAM=id;
+  const {data:t}=await sb.from('teams').select('nome,descrizione,attivo').eq('id',id).single();
+  el('crumbs').innerHTML=`<a id="back-teams">Team</a> › ${escapeHtml(t?t.nome:'')}`;
+  el('back-teams').addEventListener('click',()=>goTab('team'));
+  const isAdmin=ME.ruolo==='admin';
+  const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
+  el('content').innerHTML=`
+    <button class="back-btn" id="back-btn-top">← Team</button>
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">${escapeHtml(t?t.nome:'Team')}${t&&!t.attivo?' <span style="font-size:12px;color:var(--ink-soft);">(non attivo)</span>':''}</h2>
+    <p class="panel-sub">${escapeHtml(t&&t.descrizione||'')||'Percorso di gruppo'}</p></div>
+    ${isAdmin?'<button class="ghost small" id="team-assign-btn">Consulenti</button>':''}</div>
+    <div class="section"><div class="sh"><span class="st">Membri</span>${canWrite?'<button class="primary small" id="add-member">+ Aggiungi membro</button>':''}</div><div id="team-members-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section"><div class="sh"><span class="st">Incontri di gruppo</span>${canWrite?'<button class="primary small" id="add-team-meeting">+ Incontro</button>':''}</div><div id="team-meetings-list"><div class="spinner">Caricamento…</div></div></div>`;
+  el('back-btn-top').addEventListener('click',()=>goTab('team'));
+  if(isAdmin) el('team-assign-btn').addEventListener('click',()=>openTeamAssignModal(id));
+  if(canWrite) el('add-member').addEventListener('click',()=>openTeamMemberModal(id));
+  if(canWrite) el('add-team-meeting').addEventListener('click',()=>openTeamMeetingModal(null));
+  loadTeamMembers(id,canWrite);
+  loadTeamMeetings(id,canWrite);
+}
+
+// ---------- MEMBRI TEAM (via team_members_light: dati leggeri, anche di
+// persone non altrimenti accessibili a chi gestisce il team) ----------
+async function loadTeamMembers(teamId,canWrite){
+  const box=el('team-members-list');
+  const {data,error}=await sb.rpc('team_members_light',{p_team_id:teamId});
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  TEAM_MEMBERS_CACHE=data||[];
+  if(!data||!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun membro nel team.</div>`; return; }
+  box.innerHTML=data.map(m=>`<div class="sub-item"><div class="li-av">${initials(m.nome,m.cognome)}</div>
+    <div class="m"><div>${escapeHtml(m.nome+' '+m.cognome)}</div>
+    <div class="d">${escapeHtml(m.ragione_sociale||'')||'—'}</div></div>
+    ${canWrite?'<button class="ghost small danger tm-remove" data-id="'+m.person_id+'">Rimuovi</button>':''}</div>`).join('');
+  if(canWrite) box.querySelectorAll('.tm-remove').forEach(b=>b.addEventListener('click',()=>removeTeamMember(teamId,b.dataset.id)));
+}
+async function removeTeamMember(teamId,personId){
+  if(!confirm('Rimuovere questa persona dal team?')) return;
+  const {error}=await sb.from('team_members').delete().eq('team_id',teamId).eq('person_id',personId);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadTeamMembers(teamId, ME.ruolo==='admin'||ME.ruolo==='consulente');
+}
+async function openTeamMemberModal(teamId){
+  el('tm-msg').className='msg'; el('tm-search').value=''; el('tm-results').innerHTML='';
+  el('modal-team-member').classList.add('open');
+}
+async function searchTeamMembers(){
+  const q=el('tm-search').value.trim();
+  const box=el('tm-results');
+  if(!q){ box.innerHTML=''; return; }
+  const {data,error}=await sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)')
+    .or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`).eq('archiviata',false).limit(20);
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  const already=new Set(TEAM_MEMBERS_CACHE.map(m=>m.person_id));
+  const results=(data||[]).filter(p=>!already.has(p.id));
+  if(!results.length){ box.innerHTML='<div style="font-size:13px;color:var(--ink-soft);">Nessun risultato (o già nel team).</div>'; return; }
+  box.innerHTML=results.map(p=>`<div class="sub-item"><div class="li-av">${initials(p.nome,p.cognome)}</div>
+    <div class="m"><div>${escapeHtml(p.nome+' '+p.cognome)}</div><div class="d">${escapeHtml(p.companies?.ragione_sociale||'')||'—'}</div></div>
+    <button class="ghost small tm-add" data-id="${p.id}">+ Aggiungi</button></div>`).join('');
+  box.querySelectorAll('.tm-add').forEach(b=>b.addEventListener('click',async()=>{
+    const {error:e}=await sb.from('team_members').insert({team_id:CURRENT_TEAM,person_id:b.dataset.id});
+    if(e){ alert('Errore: '+e.message); return; }
+    await loadTeamMembers(CURRENT_TEAM, ME.ruolo==='admin'||ME.ruolo==='consulente');
+    searchTeamMembers();
+  }));
+}
+
+// ---------- ASSEGNAZIONE CONSULENTI AL TEAM (solo admin) ----------
+async function openTeamAssignModal(teamId){
+  TEAM_ASSIGN_ID=teamId; el('ta-msg').className='msg';
+  const box=el('ta-list');
+  el('modal-team-assign').classList.add('open');
+  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('cognome');
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!users.length){ box.innerHTML=`<div style="font-size:13px;color:var(--ink-soft);">Nessun consulente disponibile.</div>`; return; }
+  let assigned=new Set();
+  const {data:ct}=await sb.from('consultant_team').select('consultant_id').eq('team_id',teamId);
+  (ct||[]).forEach(r=>assigned.add(r.consultant_id));
+  box.innerHTML=users.map(u=>`<label class="chk-row"><input type="checkbox" class="ta-chk" value="${u.id}" ${assigned.has(u.id)?'checked':''}> ${escapeHtml(u.nome+' '+u.cognome)} <span style="color:var(--ink-soft);font-size:12px;">(${ROLE_LABEL[u.ruolo]})</span></label>`).join('');
+}
+async function saveTeamAssign(){
+  const msg=el('ta-msg'); msg.className='msg';
+  const checked=Array.from(document.querySelectorAll('.ta-chk:checked')).map(c=>c.value);
+  const btn=el('ta-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const {error:e1}=await sb.from('consultant_team').delete().eq('team_id',TEAM_ASSIGN_ID);
+  let e2=null;
+  if(checked.length){ ({error:e2}=await sb.from('consultant_team').insert(checked.map(cid=>({team_id:TEAM_ASSIGN_ID,consultant_id:cid})))); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(e1||e2){ msg.textContent='Errore: '+((e1||e2).message); msg.className='msg err'; return; }
+  el('modal-team-assign').classList.remove('open');
+}
+
+// ---------- INCONTRI DI GRUPPO ----------
+async function loadTeamMeetings(teamId,canWrite){
+  const box=el('team-meetings-list');
+  const {data,error}=await sb.from('team_meetings').select('id,data_ora,durata_min,sintesi').eq('team_id',teamId).order('data_ora',{ascending:false});
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(!data||!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun incontro di gruppo registrato.</div>`; return; }
+  box.innerHTML=data.map(m=>`<div class="sub-item">
+    <div class="m"><div>${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</div>
+    <div class="d">${escapeHtml(m.sintesi||'—')}</div></div>
+    ${canWrite?'<button class="ghost small tmeet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger tmeet-del" data-id="'+m.id+'">Elimina</button>':''}</div>`).join('');
+  if(canWrite){
+    box.querySelectorAll('.tmeet-edit').forEach(b=>b.addEventListener('click',()=>openTeamMeetingModal(b.dataset.id)));
+    box.querySelectorAll('.tmeet-del').forEach(b=>b.addEventListener('click',()=>delTeamMeeting(b.dataset.id)));
+  }
+}
+async function openTeamMeetingModal(id){
+  EDIT_TEAM_MEETING=id||null; el('tmm-msg').className='msg';
+  el('tmm-title').textContent = id?'Modifica incontro':'Nuovo incontro di gruppo';
+  if(id){
+    const {data:m}=await sb.from('team_meetings').select('data_ora,durata_min,sintesi').eq('id',id).single();
+    if(m){ el('tm-dataora').value = m.data_ora ? new Date(m.data_ora).toISOString().slice(0,16) : ''; el('tm-durata').value = m.durata_min||''; el('tm-sintesi').value = m.sintesi||''; }
+  } else { el('tm-dataora').value=new Date().toISOString().slice(0,16); el('tm-durata').value=''; el('tm-sintesi').value=''; }
+  el('modal-team-meeting').classList.add('open');
+}
+async function saveTeamMeeting(){
+  const msg=el('tmm-msg'); msg.className='msg';
+  if(!el('tm-dataora').value){ msg.textContent='Data e ora sono obbligatorie.'; msg.className='msg err'; return; }
+  const payload={ team_id:CURRENT_TEAM, consultant_id:ME.id,
+    data_ora:new Date(el('tm-dataora').value).toISOString(),
+    durata_min:el('tm-durata').value?parseInt(el('tm-durata').value):null,
+    sintesi:el('tm-sintesi').value.trim()||null };
+  const btn=el('tmm-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  let err;
+  if(EDIT_TEAM_MEETING){ ({error:err}=await sb.from('team_meetings').update(payload).eq('id',EDIT_TEAM_MEETING)); }
+  else { ({error:err}=await sb.from('team_meetings').insert(payload)); }
+  btn.disabled=false; btn.textContent='Salva';
+  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  el('modal-team-meeting').classList.remove('open');
+  loadTeamMeetings(CURRENT_TEAM, ME.ruolo==='admin'||ME.ruolo==='consulente');
+}
+async function delTeamMeeting(id){
+  if(!confirm('Eliminare questo incontro di gruppo? L\'operazione non è reversibile.')) return;
+  const {error}=await sb.from('team_meetings').delete().eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadTeamMeetings(CURRENT_TEAM, ME.ruolo==='admin'||ME.ruolo==='consulente');
+}
+
 function fmtDateTime(dt){ if(!dt)return''; const d=new Date(dt); return d.toLocaleString('it-IT',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
 
 let HEALTH_PERSON=null;
@@ -1831,11 +2063,20 @@ el('pat-newname').addEventListener('input', checkSimilar);
 el('pat-newsave').addEventListener('click', saveNewPatho);
 el('mm-cancel').addEventListener('click', ()=>{ el('modal-meeting').classList.remove('open'); });
 el('mm-save').addEventListener('click', saveMeeting);
+el('mt-cancel').addEventListener('click', ()=>{ el('modal-team').classList.remove('open'); EDIT_TEAM=null; });
+el('mt-save').addEventListener('click', saveTeamModal);
+el('ta-cancel').addEventListener('click', ()=>{ el('modal-team-assign').classList.remove('open'); });
+el('ta-save').addEventListener('click', saveTeamAssign);
+el('tm-cancel').addEventListener('click', ()=>{ el('modal-team-member').classList.remove('open'); });
+el('tm-search-btn').addEventListener('click', searchTeamMembers);
+el('tm-search').addEventListener('keydown', e=>{ if(e.key==='Enter') searchTeamMembers(); });
+el('tmm-cancel').addEventListener('click', ()=>{ el('modal-team-meeting').classList.remove('open'); });
+el('tmm-save').addEventListener('click', saveTeamMeeting);
 el('sr-cancel').addEventListener('click', ()=>{ el('modal-selfrep').classList.remove('open'); });
 el('sr-save').addEventListener('click', saveSelfRep);
 el('mcal-cancel').addEventListener('click', ()=>{ el('modal-calendar').classList.remove('open'); });
 el('mcal-save').addEventListener('click', saveCalendar);
-[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-selfrep'],['modal-calendar']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-member'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
 
 // ══════════════════════════════════════════════════════════════════════════
 // WORK CALENDAR (tab "Le mie attività") — tutti gli identificatori
