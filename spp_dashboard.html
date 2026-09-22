@@ -1595,7 +1595,9 @@ async function loadTeamCategories(force){
   if(TEAM_CATEGORIES_CACHE && !force) return TEAM_CATEGORIES_CACHE;
   const {data,error}=await sb.rpc('team_categories');
   if(error){ console.error('team_categories:',error.message); TEAM_CATEGORIES_CACHE=[]; return TEAM_CATEGORIES_CACHE; }
-  TEAM_CATEGORIES_CACHE=data||[];
+  // group by senza ORDER BY nella funzione — ordina qui una volta sola,
+  // così sia viewTeams sia loadCompanyTeams ereditano l'elenco già alfabetico.
+  TEAM_CATEGORIES_CACHE=(data||[]).sort((a,b)=>a.nome.localeCompare(b.nome,'it'));
   return TEAM_CATEGORIES_CACHE;
 }
 
@@ -1683,7 +1685,15 @@ async function enterTeam(id){
     <div class="section"><div class="sh"><span class="st">Incontri di gruppo</span>${canWrite?'<button class="primary small" id="add-team-meeting">+ Incontro</button>':''}</div><div id="team-meetings-list"><div class="spinner">Caricamento…</div></div></div>`;
   el('back-btn-top').addEventListener('click',()=>goTab('team'));
   if(isAdmin) el('team-assign-btn').addEventListener('click',()=>openTeamAssignModal(id));
-  if(canWrite) el('add-member').addEventListener('click',()=>openTeamMemberModal(id));
+  if(canWrite){
+    // Team già "interno" a un'azienda (n_aziende=1): propone direttamente
+    // le persone di quella azienda invece di richiedere una ricerca manuale
+    // persona per persona. Un team vuoto o già interaziendale resta a
+    // ricerca libera (nessuna azienda unica da proporre).
+    const cat=(await loadTeamCategories()).find(c=>c.team_id===id);
+    const companyFilter=(cat&&cat.n_aziende===1)?cat.company_id:null;
+    el('add-member').addEventListener('click',()=>openTeamMemberModal(id, companyFilter));
+  }
   if(canWrite) el('add-team-meeting').addEventListener('click',()=>openTeamMeetingModal(null));
   loadTeamMembers(id,canWrite);
   loadTeamMeetings(id,canWrite);
@@ -1695,6 +1705,9 @@ async function loadTeamMembers(teamId,canWrite){
   const box=el('team-members-list');
   const {data,error}=await sb.rpc('team_members_light',{p_team_id:teamId});
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  // team_members_light() non garantisce un ordine (nessun ORDER BY nella
+  // funzione) — ordina qui, come tutti gli altri elenchi persone del gestionale.
+  (data||[]).sort((a,b)=>(a.cognome+a.nome).localeCompare(b.cognome+b.nome,'it'));
   TEAM_MEMBERS_CACHE=data||[];
   if(!data||!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun membro nel team.</div>`; return; }
   box.innerHTML=data.map(m=>`<div class="sub-item"><div class="li-av">${initials(m.nome,m.cognome)}</div>
@@ -1734,7 +1747,7 @@ async function searchTeamMembers(){
   const q=el('tm-search').value.trim();
   const box=el('tm-results');
   if(!q && !TEAM_MEMBER_FILTER_COMPANY){ box.innerHTML=''; return; }
-  let query=sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)').eq('archiviata',false).limit(20);
+  let query=sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)').eq('archiviata',false).order('cognome').limit(20);
   if(q) query=query.or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`);
   if(TEAM_MEMBER_FILTER_COMPANY) query=query.eq('company_id',TEAM_MEMBER_FILTER_COMPANY);
   const {data,error}=await query;
