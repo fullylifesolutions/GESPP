@@ -131,6 +131,8 @@
   .wc-day-cell.wc-today .wc-day-num{color:#2d6a4f}
   .wc-task-chip{font-size:10px;padding:2px 5px;border-radius:3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
   .wc-task-chip.wc-dragging{opacity:.3}
+  .wc-task-chip.wc-task-chip-tagged{border:1px dashed currentColor}
+  .wc-week-card.wc-task-chip-tagged{border-left-style:dashed}
   .wc-more{font-size:9px;color:#999}
   .wc-week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
   .wc-week-col{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
@@ -2241,7 +2243,11 @@ async function wcInit(){
 async function wcLoadAll(){
   const [catRes,taskRes,backlogRes]=await Promise.all([
     sb.from('wc_categories').select('*').eq('owner_id',ME.id).order('nome'),
-    sb.from('wc_tasks').select('*, wc_task_operators(operator_id), wc_subtasks(*, wc_subtask_operators(operator_id))').eq('owner_id',ME.id).order('data'),
+    // Nessun filtro owner_id: la RLS (wc_tasks_owner_all + wc_tasks_team_read)
+    // restituisce già solo i miei task e quelli dove sono taggato come
+    // operatore — stesso pattern già usato in wcLoadAssigned(). Così i task
+    // taggati compaiono anche nel calendario, non solo in "Assegnato a me".
+    sb.from('wc_tasks').select('*, wc_task_operators(operator_id), wc_subtasks(*, wc_subtask_operators(operator_id))').order('data'),
     sb.from('wc_backlog').select('*').eq('owner_id',ME.id).order('created_at',{ascending:false})
   ]);
   if(catRes.error) wcToast('Errore categorie: '+catRes.error.message,'error');
@@ -2250,6 +2256,18 @@ async function wcLoadAll(){
   wcState.categories=(catRes.data||[]).map(c=>({id:c.id,nome:c.nome,colore:c.colore}));
   wcState.tasks=(taskRes.data||[]).map(wcMapTaskRow);
   wcState.backlog=(backlogRes.data||[]).map(b=>({id:b.id,name:b.nome,pts:b.pts,category:b.categoria_id,notes:b.note}));
+  // Categorie di task taggati appartenenti ad altri consulenti (non nelle
+  // mie wc_categories): la policy wc_categories_team_read le rende leggibili
+  // perché usate in un task che posso vedere — stesso motivo di wcLoadAssigned.
+  const myCatIds=new Set(wcState.categories.map(c=>c.id));
+  const foreignCatIds=[...new Set(wcState.tasks.filter(t=>t.ownerId!==ME.id && t.category && !myCatIds.has(t.category)).map(t=>t.category))];
+  if(foreignCatIds.length){
+    const {data:fcats}=await sb.from('wc_categories').select('id,nome,colore').in('id',foreignCatIds);
+    (fcats||[]).forEach(c=>{ wcState.assignedCategories[c.id]={nome:c.nome,colore:c.colore}; });
+  }
+}
+function wcCatFor(t){
+  return wcState.categories.find(c=>c.id===t.category) || wcState.assignedCategories[t.category] || null;
 }
 function wcMapTaskRow(row){
   const subtasks=(row.wc_subtasks||[]).slice().sort((a,b)=>(a.ordine||0)-(b.ordine||0)).map(s=>({
@@ -2354,10 +2372,14 @@ function wcRenderDayCell(ds,allTasks,otherMonth,todayStr){
   let html=`<div class="${classes}" data-date="${ds}" onclick="wcSelectDay('${ds}')"><div class="wc-day-num">${d}</div>`;
   const show=tasks.slice(0,3);
   for(const t of show){
-    const cat=wcState.categories.find(c=>c.id===t.category);
+    const cat=wcCatFor(t);
     const color=cat?cat.colore:'#999';
     const isDone=t.status==='done';
-    html+=`<div class="wc-task-chip" style="background:${color}22;color:${color}" draggable="${!t._recurring}" data-taskid="${t._base||t.id}" data-fromdate="${ds}" onclick="event.stopPropagation();wcEditTask('${t._base||t.id}')" title="${wcEsc(t.name)}">
+    const mine=t.ownerId===ME.id;
+    const owner=mine?null:wcGetOp(t.ownerId);
+    const clickFn=mine?`wcEditTask('${t._base||t.id}')`:`wcOpenAssignedTaskDetail('${t._base||t.id}')`;
+    const tooltip=mine?wcEsc(t.name):wcEsc(t.name+(owner?' — di '+wcOpFullName(owner):''));
+    html+=`<div class="wc-task-chip${mine?'':' wc-task-chip-tagged'}" style="background:${color}22;color:${color}" draggable="${!t._recurring && mine}" data-taskid="${t._base||t.id}" data-fromdate="${ds}" onclick="event.stopPropagation();${clickFn}" title="${tooltip}">
       <span style="${isDone?'text-decoration:line-through;opacity:.6':''}">${wcEsc(t.name)}${t._recurring?' ↻':''}</span> <span style="font-size:9px;opacity:.7">(${t.totalPts||t.pts})</span>
     </div>`;
   }
@@ -2436,11 +2458,15 @@ function wcRenderWeekView(){
     const isToday=ds===todayStr;
     html+=`<div class="wc-week-col"><div class="wc-week-col-head"><div class="wc-week-day-name">${WC_DAYS_IT[days.indexOf(day)]}</div><div class="wc-week-day-num"${isToday?' style="color:#2d6a4f"':''}>${day.getDate()}</div></div><div class="wc-week-tasks">`;
     for(const t of tasks){
-      const cat=wcState.categories.find(c=>c.id===t.category);
+      const cat=wcCatFor(t);
       const color=cat?cat.colore:'#999';
-      html+=`<div class="wc-week-card" style="border-color:${color}" onclick="wcEditTask('${t._base||t.id}')">
+      const mine=t.ownerId===ME.id;
+      const owner=mine?null:wcGetOp(t.ownerId);
+      const clickFn=mine?`wcEditTask('${t._base||t.id}')`:`wcOpenAssignedTaskDetail('${t._base||t.id}')`;
+      const ownerBadge=mine?'':`<span class="wc-pts-badge" title="Assegnato da ${wcEsc(owner?wcOpFullName(owner):'')}">👤 ${wcEsc(owner?wcOpFullName(owner):'?')}</span>`;
+      html+=`<div class="wc-week-card${mine?'':' wc-task-chip-tagged'}" style="border-color:${color}" onclick="${clickFn}">
         <div style="font-size:12px;font-weight:500${t.status==='done'?';text-decoration:line-through;color:#999':''}">${wcEsc(t.name)}${t._recurring?' ↻':''}</div>
-        <div style="display:flex;gap:6px;margin-top:4px;align-items:center"><span class="wc-pts-badge">${t.totalPts||t.pts}pt</span><span class="wc-status-badge wc-status-${t.status}">${WC_STATUS_LABELS[t.status]}</span></div>
+        <div style="display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap"><span class="wc-pts-badge">${t.totalPts||t.pts}pt</span><span class="wc-status-badge wc-status-${t.status}">${WC_STATUS_LABELS[t.status]}</span>${ownerBadge}</div>
       </div>`;
     }
     html+=`</div><div style="padding:8px"><button class="wc-add-inline" onclick="wcOpenAddTask('${ds}')">+ aggiungi</button></div></div>`;
