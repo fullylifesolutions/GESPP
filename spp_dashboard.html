@@ -2248,7 +2248,10 @@ async function wcLoadAll(){
     // operatore — stesso pattern già usato in wcLoadAssigned(). Così i task
     // taggati compaiono anche nel calendario, non solo in "Assegnato a me".
     sb.from('wc_tasks').select('*, wc_task_operators(operator_id), wc_subtasks(*, wc_subtask_operators(operator_id))').order('data'),
-    sb.from('wc_backlog').select('*').eq('owner_id',ME.id).order('created_at',{ascending:false})
+    // ordine: colonna di riordino manuale (patch16); tutte le righe esistenti
+    // partono a 0, quindi il tie-break su created_at desc mantiene il
+    // comportamento attuale finche' nessuno trascina nulla.
+    sb.from('wc_backlog').select('*').eq('owner_id',ME.id).order('ordine').order('created_at',{ascending:false})
   ]);
   if(catRes.error) wcToast('Errore categorie: '+catRes.error.message,'error');
   if(taskRes.error) wcToast('Errore attività: '+taskRes.error.message,'error');
@@ -2765,6 +2768,45 @@ function wcRenderBacklog(){
     elx.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/wc-backlog',elx.dataset.backlogid); e.dataTransfer.effectAllowed='move'; elx.classList.add('wc-dragging'); });
     elx.addEventListener('dragend',()=>elx.classList.remove('wc-dragging'));
   });
+  wcAttachBacklogReorder(box);
+}
+// Riordino drag&drop DENTRO il backlog (diverso dal trascinamento di una
+// card sul calendario, che usa lo stesso data-backlogid ma rilascia sulla
+// griglia mese/settimana, non qui). Listener sul contenitore, non sulle
+// singole card: sopravvive ai re-render di wcRenderBacklog() (box._reorderAttached
+// e' una proprieta' del nodo #wc-backlog-list, che innerHTML non ricrea).
+function wcAttachBacklogReorder(box){
+  if(box._reorderAttached) return;
+  box._reorderAttached=true;
+  box.addEventListener('dragover',e=>{
+    const dragging=box.querySelector('.wc-backlog-item.wc-dragging');
+    if(!dragging) return; // non e' un drag di riordino (es. e' un chip del calendario)
+    e.preventDefault();
+    const after=wcBacklogDragAfterElement(box,e.clientY);
+    if(after==null) box.appendChild(dragging); else box.insertBefore(dragging,after);
+  });
+  box.addEventListener('drop',e=>{
+    const dragging=box.querySelector('.wc-backlog-item.wc-dragging');
+    if(!dragging) return;
+    e.preventDefault();
+    wcPersistBacklogOrder(box);
+  });
+}
+function wcBacklogDragAfterElement(box,y){
+  const els=[...box.querySelectorAll('.wc-backlog-item:not(.wc-dragging)')];
+  return els.reduce((closest,child)=>{
+    const rect=child.getBoundingClientRect();
+    const offset=y-rect.top-rect.height/2;
+    if(offset<0 && offset>closest.offset) return {offset,element:child};
+    return closest;
+  },{offset:-Infinity,element:null}).element;
+}
+async function wcPersistBacklogOrder(box){
+  const ids=[...box.querySelectorAll('.wc-backlog-item')].map(elx=>elx.dataset.backlogid);
+  wcState.backlog.sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id));
+  const results=await Promise.all(ids.map((id,i)=>sb.from('wc_backlog').update({ordine:i}).eq('id',id)));
+  const failed=results.find(r=>r.error);
+  if(failed){ wcToast('Errore nel salvare l\'ordine: '+failed.error.message,'error'); await wcLoadAll(); wcRenderAll(); }
 }
 async function wcScheduleBacklogToDate(backlogId,dateStr){
   const it=wcState.backlog.find(b=>b.id===backlogId);

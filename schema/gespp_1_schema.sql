@@ -349,7 +349,8 @@ create table public.wc_backlog (
     pts          integer not null default 5,
     categoria_id uuid references public.wc_categories(id) on delete set null,
     note         text,
-    created_at   timestamptz not null default now()
+    created_at   timestamptz not null default now(),
+    ordine       integer not null default 0     -- patch16: riordino manuale drag&drop
 );
 
 create table public.wc_tasks (
