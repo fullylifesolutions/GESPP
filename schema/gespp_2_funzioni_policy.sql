@@ -663,5 +663,103 @@ grant select, insert, update, delete on
     to authenticated;
 
 -- ============================================================================
+-- TEAM — funzioni, policy, trigger (tabelle in gespp_1_schema.sql)
+-- ============================================================================
+
+-- can_access_team(): stesso pattern di can_access_person(), ma il grafo è
+-- SEPARATO — legge solo consultant_team, mai consultant_company/
+-- consultant_person. Admin bypassa sempre.
+create or replace function public.can_access_team(p_team_id uuid)
+returns boolean language sql stable security definer set search_path = public set row_security = off
+as $$
+    select public.is_admin()
+        or exists(select 1 from public.consultant_team ct
+                  where ct.team_id = p_team_id and ct.consultant_id = auth.uid());
+$$;
+grant execute on function public.can_access_team(uuid) to authenticated;
+
+-- team_members_light(): unica superficie che espone dati di persone
+-- eventualmente non raggiungibili via can_access_person() a chi gestisce il
+-- team. Espone SOLO nome/cognome/azienda — non seleziona né spp_profiles né
+-- alcuna tabella sanitaria: non può far trapelare quel dato per costruzione,
+-- non solo per policy.
+create or replace function public.team_members_light(p_team_id uuid)
+returns table(person_id uuid, nome text, cognome text, company_id uuid, ragione_sociale text)
+language sql stable security definer set search_path = public set row_security = off
+as $$
+    select p.id, p.nome, p.cognome, p.company_id, c.ragione_sociale
+    from public.team_members tm
+    join public.persons p on p.id = tm.person_id
+    left join public.companies c on c.id = p.company_id
+    where tm.team_id = p_team_id
+      and public.can_access_team(p_team_id);
+$$;
+grant execute on function public.team_members_light(uuid) to authenticated;
+
+-- Audit FULL (non sensitive) su team_meetings: incontri di gruppo senza dato
+-- sanitario, a differenza di trg_audit_meetings (sensitive). Nessun audit su
+-- teams/team_members/consultant_team — stesso criterio già in uso per
+-- consultant_company/consultant_person, che non hanno mai avuto un trigger
+-- di audit dedicato.
+drop trigger if exists trg_audit_team_meetings on public.team_meetings;
+create trigger trg_audit_team_meetings after insert or update or delete on public.team_meetings
+    for each row execute function public.fn_audit_write('full');
+
+-- ----------------------------------------------------------------------------
+-- POLICY RLS
+-- ----------------------------------------------------------------------------
+-- teams: creazione/cancellazione SOLO admin; lettura e modifica contenuto
+-- (nome/descrizione/attivo) a chi è assegnato via consultant_team.
+drop policy if exists teams_read on public.teams;
+create policy teams_read on public.teams
+    for select using (public.can_access_team(id));
+drop policy if exists teams_admin_insert on public.teams;
+create policy teams_admin_insert on public.teams
+    for insert with check (public.is_admin());
+drop policy if exists teams_update on public.teams;
+create policy teams_update on public.teams
+    for update using (public.can_access_team(id) and public.can_write())
+    with check (public.can_access_team(id) and public.can_write());
+drop policy if exists teams_admin_delete on public.teams;
+create policy teams_admin_delete on public.teams
+    for delete using (public.is_admin());
+
+-- consultant_team: lettura propria (o admin), scrittura SOLO admin — stesso
+-- pattern esatto di cc_read/cc_admin_write e cp_read/cp_admin_write.
+drop policy if exists consultant_team_read on public.consultant_team;
+create policy consultant_team_read on public.consultant_team
+    for select using (consultant_id = auth.uid() or public.is_admin());
+drop policy if exists consultant_team_admin_write on public.consultant_team;
+create policy consultant_team_admin_write on public.consultant_team
+    for all using (public.is_admin()) with check (public.is_admin());
+
+-- team_members: chi gestisce il team aggiunge/rimuove membri di QUALUNQUE
+-- azienda, anche non seguita individualmente — è il punto del team.
+-- can_write() esclude consulente_limitato dalla scrittura (può comunque
+-- leggere), stesso schema di meetings.
+drop policy if exists team_members_read on public.team_members;
+create policy team_members_read on public.team_members
+    for select using (public.can_access_team(team_id));
+drop policy if exists team_members_write on public.team_members;
+create policy team_members_write on public.team_members
+    for all using (public.can_write() and public.can_access_team(team_id))
+    with check (public.can_write() and public.can_access_team(team_id));
+
+-- team_meetings: stessa gate "leggera" dei meetings individuali — nessuna
+-- esclusione consulente_limitato in lettura, nessun controllo di consenso
+-- sanitario (non è dato art.9).
+drop policy if exists team_meetings_read on public.team_meetings;
+create policy team_meetings_read on public.team_meetings
+    for select using (public.can_access_team(team_id));
+drop policy if exists team_meetings_write on public.team_meetings;
+create policy team_meetings_write on public.team_meetings
+    for all using (public.can_write() and public.can_access_team(team_id))
+    with check (public.can_write() and public.can_access_team(team_id));
+
+grant select, insert, update, delete on
+    public.teams, public.team_members, public.consultant_team, public.team_meetings
+    to authenticated;
+
+-- ============================================================================
 --  FINE FILE 2. Procedere con gespp_3_dati_iniziali.sql
 -- ============================================================================

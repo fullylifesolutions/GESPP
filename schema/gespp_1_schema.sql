@@ -435,5 +435,73 @@ alter table public.wc_subtask_operators   enable row level security;
 alter table public.wc_task_updates        enable row level security;
 
 -- ============================================================================
+-- TEAM — raggruppamenti di persons per percorsi di gruppo (formazione,
+-- progetti). NEUTRI: nessun dato sanitario, nessuna struttura psicofisiologica.
+-- Vedi gespp_2_funzioni_policy.sql per funzioni/policy/trigger corrispondenti
+-- (dipendono da fn_audit_write, definita lì).
+--
+-- Modello:
+--   - teams: nessun company_id fisso — aziendale o interaziendale, la
+--     composizione emerge dai company_id dei membri via team_members.
+--   - team_members: appartenenza persona↔team. Una persona può stare sia in
+--     percorsi individuali sia in uno o più team.
+--   - consultant_team: chi gestisce quale team — stesso pattern di
+--     consultant_company/consultant_person, ma scrittura SOLO admin (vedi
+--     policy in file 2): decide l'admin, non un'auto-assegnazione.
+--   - team_meetings: incontri di GRUPPO, tabella separata da meetings
+--     (individuali) — nessuna FK verso meetings né verso alcuna tabella
+--     sanitaria.
+--
+-- BARRIERA CRITICA (verificata esplicitamente in file 2, sezione TEAM):
+-- questo grafo è parallelo a can_access_person()/consultant_company/
+-- consultant_person — non li tocca, non ne viene toccato. Vedere una persona
+-- in un team non apre l'accesso a spp_profiles/health_records di quella
+-- persona: nessuna policy di queste tabelle nuove referenzia mai spp_profiles,
+-- health_records, health_consents, self_reports, e can_access_person() non
+-- viene modificata.
+-- ----------------------------------------------------------------------------
+create table if not exists public.teams (
+    id          uuid primary key default gen_random_uuid(),
+    nome        text not null,
+    descrizione text,
+    attivo      boolean not null default true,
+    created_at  timestamptz not null default now()
+);
+
+create table if not exists public.team_members (
+    team_id    uuid not null references public.teams(id) on delete cascade,
+    person_id  uuid not null references public.persons(id) on delete cascade,
+    joined_at  timestamptz not null default now(),
+    primary key (team_id, person_id)
+);
+create index if not exists idx_team_members_person on public.team_members(person_id);
+
+create table if not exists public.consultant_team (
+    consultant_id uuid not null references public.app_users(id) on delete cascade,
+    team_id       uuid not null references public.teams(id) on delete cascade,
+    created_at    timestamptz not null default now(),
+    primary key (consultant_id, team_id)
+);
+
+create table if not exists public.team_meetings (
+    id            uuid primary key default gen_random_uuid(),
+    team_id       uuid not null references public.teams(id) on delete cascade,
+    consultant_id uuid not null references public.app_users(id),
+    data_ora      timestamptz not null,
+    durata_min    integer,
+    sintesi       text,
+    created_at    timestamptz not null default now()
+);
+create index if not exists idx_team_meetings_team on public.team_meetings(team_id);
+
+-- RLS abilitata esplicitamente: l'event trigger ensure_rls dovrebbe già
+-- averlo fatto alla CREATE TABLE, la ripetiamo per non dipendere
+-- silenziosamente da quel meccanismo.
+alter table public.teams            enable row level security;
+alter table public.team_members     enable row level security;
+alter table public.consultant_team  enable row level security;
+alter table public.team_meetings    enable row level security;
+
+-- ============================================================================
 --  FINE FILE 1. Procedere con gespp_2_funzioni_policy.sql
 -- ============================================================================
