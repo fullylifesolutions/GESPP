@@ -696,6 +696,33 @@ as $$
 $$;
 grant execute on function public.team_members_light(uuid) to authenticated;
 
+-- team_categories(): categorizzazione derivata team interno/interaziendale
+-- per i soli team accessibili al chiamante. NON espone dati di persone (né
+-- nome né cognome) — solo id/nome team, conteggio aziende distinte tra i
+-- membri, e il company_id univoco quando n_aziende=1. row_security=off è
+-- necessario per contare i membri via persons bypassando can_access_person()
+-- (grafo separato, stesso motivo di team_members_light): senza il bypass, un
+-- consulente assegnato al team ma non a una delle aziende dei suoi membri
+-- vedrebbe un conteggio artificialmente basso e un team interaziendale
+-- risulterebbe "interno" per errore — il bypass è confinato al solo COUNT
+-- DISTINCT, non emette mai le righe di persons. Gate invariato: can_access_team.
+create or replace function public.team_categories()
+returns table(team_id uuid, nome text, n_aziende integer, company_id uuid)
+language sql stable security definer set search_path = public set row_security = off
+as $$
+  select t.id, t.nome,
+         count(distinct p.company_id)::int as n_aziende,
+         case when count(distinct p.company_id) = 1
+              then (array_agg(p.company_id) filter (where p.company_id is not null))[1]
+         end as company_id
+  from public.teams t
+  left join public.team_members tm on tm.team_id = t.id
+  left join public.persons p on p.id = tm.person_id
+  where public.can_access_team(t.id)
+  group by t.id, t.nome;
+$$;
+grant execute on function public.team_categories() to authenticated;
+
 -- Audit FULL (non sensitive) su team_meetings: incontri di gruppo senza dato
 -- sanitario, a differenza di trg_audit_meetings (sensitive). Nessun audit su
 -- teams/team_members/consultant_team — stesso criterio già in uso per

@@ -512,6 +512,9 @@ let EDIT_PERSON=null, PERSON_MODE='dipendente'; // 'dipendente' | 'professionist
 let TAB='aziende';
 let CURRENT_TEAM=null, EDIT_TEAM=null, TEAM_ASSIGN_ID=null, EDIT_TEAM_MEETING=null;
 let TEAM_MEMBERS_CACHE=[]; // ultimo team_members_light caricato, per escludere i già-membri dal picker
+let TEAM_CATEGORIES_CACHE=null; // cache di sessione di team_categories(): [{team_id,nome,n_aziende,company_id}], null=da ricaricare
+let TEAM_CREATE_COMPANY=null; // {id,nome} quando "Nuovo team" e' aperto dalla scheda azienda (scorciatoia)
+let TEAM_MEMBER_FILTER_COMPANY=null, TEAM_MEMBER_ONCLOSE=null; // stato del modal "Aggiungi membro" quando filtrato per azienda
 
 // ---------- LOGIN ----------
 async function doLogin(){
@@ -647,6 +650,7 @@ async function enterCompany(id){
   el('crumbs').innerHTML=`<a id="back-companies">Aziende</a> › ${escapeHtml(c?c.ragione_sociale:'')}`;
   el('back-companies').addEventListener('click',()=>goTab('aziende'));
   const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
+  const isAdmin=ME.ruolo==='admin';
   el('content').innerHTML=`
     <button class="back-btn" id="back-btn-top">← Aziende</button>
     <div class="row-head"><div style="flex:1;"><h2 class="panel-title">${escapeHtml(c?c.ragione_sociale:'Azienda')}</h2>
@@ -654,6 +658,7 @@ async function enterCompany(id){
     <div class="section"><div class="sh"><span class="st">Persone</span>${canWrite?'<button class="primary small" id="add-person">+ Persona</button>':''}</div><div id="persons-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Sedi</span>${canWrite?'<button class="primary small" id="add-site">+ Sede</button>':''}</div><div id="sites-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Referenti</span>${canWrite?'<button class="primary small" id="add-contact">+ Referente</button>':''}</div><div id="contacts-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section"><div class="sh"><span class="st">Team</span>${isAdmin?'<button class="primary small" id="add-team">+ Nuovo team</button>':''}</div><div id="company-team-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Calendario prenotazioni</span></div><div id="calendar-box"><div class="spinner">Caricamento…</div></div></div>`;
   el('back-btn-top').addEventListener('click',()=>goTab('aziende'));
   if(canWrite){
@@ -661,8 +666,20 @@ async function enterCompany(id){
     el('add-site').addEventListener('click',()=>openSiteModal(null));
     el('add-contact').addEventListener('click',()=>openContactModal(null));
   }
-  loadPersons(id,canWrite); loadSites(id,canWrite); loadContacts(id,canWrite);
+  if(isAdmin) el('add-team').addEventListener('click',()=>{ TEAM_CREATE_COMPANY={id, nome:c?c.ragione_sociale:''}; openTeamModal(null); });
+  loadPersons(id,canWrite); loadSites(id,canWrite); loadContacts(id,canWrite); loadCompanyTeams(id);
   loadCalendarBox(id, canWrite, c?c.ragione_sociale:'Azienda', 'calendar-box', ()=>enterCompany(id));
+}
+
+// ---------- TEAM INTERNI ALL'AZIENDA (derivati da team_categories(), n_aziende=1) ----------
+async function loadCompanyTeams(companyId){
+  const box=el('company-team-list');
+  const categories=await loadTeamCategories();
+  const teams=categories.filter(c=>c.n_aziende===1 && c.company_id===companyId);
+  if(!teams.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun team interno a questa azienda.</div>`; return; }
+  box.innerHTML=teams.map(t=>`<div class="sub-item" style="cursor:pointer;" data-id="${t.team_id}"><div class="li-ic">👥</div>
+    <div class="m"><div>${escapeHtml(t.nome)}</div></div><span class="li-arrow">›</span></div>`).join('');
+  box.querySelectorAll('.sub-item').forEach(it=>it.addEventListener('click',()=>enterTeam(it.dataset.id)));
 }
 
 // ---------- PERSONE (dipendenti dentro azienda) ----------
@@ -1571,20 +1588,39 @@ async function delMeeting(id){
 }
 
 // ---------- TEAM ----------
+// team_categories(): UNA chiamata per sessione (cache), riusata sia dalla
+// vista globale (solo interaziendali) sia dalla scheda azienda (solo
+// interni a quella azienda) — mai una chiamata per team (no N+1).
+async function loadTeamCategories(force){
+  if(TEAM_CATEGORIES_CACHE && !force) return TEAM_CATEGORIES_CACHE;
+  const {data,error}=await sb.rpc('team_categories');
+  if(error){ console.error('team_categories:',error.message); TEAM_CATEGORIES_CACHE=[]; return TEAM_CATEGORIES_CACHE; }
+  TEAM_CATEGORIES_CACHE=data||[];
+  return TEAM_CATEGORIES_CACHE;
+}
+
 async function viewTeams(){
   CURRENT_TEAM=null; el('crumbs').innerHTML='Team';
   const isAdmin=ME.ruolo==='admin';
   el('content').innerHTML=`
     <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Team</h2>
-    <p class="panel-sub">${isAdmin?'Crea i team e assegnali ai consulenti che li gestiscono.':'I team che gestisci.'}</p></div>
+    <p class="panel-sub">${isAdmin?'Team interaziendali: crea i team e assegnali ai consulenti che li gestiscono.':'I team interaziendali che gestisci.'}</p></div>
     ${isAdmin?'<button class="primary" id="new-team">+ Nuovo team</button>':''}</div>
     <div class="list" id="team-list"><div class="spinner">Caricamento…</div></div>`;
-  if(isAdmin) el('new-team').addEventListener('click',()=>openTeamModal(null));
-  const {data,error}=await sb.from('teams').select('id,nome,descrizione,attivo').order('nome');
+  if(isAdmin) el('new-team').addEventListener('click',()=>{ TEAM_CREATE_COMPANY=null; openTeamModal(null); });
+  const [{data,error},categories]=await Promise.all([
+    sb.from('teams').select('id,nome,descrizione,attivo').order('nome'),
+    loadTeamCategories()
+  ]);
   const list=el('team-list');
   if(error){ list.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
-  if(!data.length){ list.innerHTML=`<div class="empty">${isAdmin?'Nessun team. Creane uno.':'Nessun team assegnato.'}</div>`; return; }
-  list.innerHTML=data.map(t=>`<div class="list-item" data-id="${t.id}" style="${t.attivo?'':'opacity:.55;'}"><div class="li-ic">👥</div>
+  const catByTeam={}; categories.forEach(c=>{ catByTeam[c.team_id]=c; });
+  // Sezione globale: solo interaziendali (n_aziende>=2) + team vuoti
+  // (n_aziende=0, default sicuro) — i team con n_aziende=1 sono "interni"
+  // e vivono solo nella scheda della loro azienda.
+  const globalData=data.filter(t=>{ const c=catByTeam[t.id]; return !c || c.n_aziende!==1; });
+  if(!globalData.length){ list.innerHTML=`<div class="empty">${isAdmin?'Nessun team interaziendale. Creane uno.':'Nessun team interaziendale assegnato.'}</div>`; return; }
+  list.innerHTML=globalData.map(t=>`<div class="list-item" data-id="${t.id}" style="${t.attivo?'':'opacity:.55;'}"><div class="li-ic">👥</div>
     <div class="li-main"><div class="t">${escapeHtml(t.nome)} ${t.attivo?'':'<span style="font-size:11px;color:var(--ink-soft);">(non attivo)</span>'}</div>
     <div class="d">${escapeHtml(t.descrizione||'')||'—'}</div></div>
     ${isAdmin?'<button class="ghost small edit-btn" data-id="'+t.id+'">Modifica</button> <button class="ghost small danger team-del" data-id="'+t.id+'" data-nome="'+escapeHtml(t.nome)+'">Elimina</button>':''}<span class="li-arrow">›</span></div>`).join('');
@@ -1604,17 +1640,30 @@ async function saveTeamModal(){
   if(!nome){ msg.textContent='Il nome è obbligatorio.'; msg.className='msg err'; return; }
   const payload={nome, descrizione:el('t-descrizione').value.trim()||null, attivo:el('t-attivo').checked};
   const btn=el('mt-save'); btn.disabled=true; btn.textContent='Salvataggio…';
-  let err;
+  let err, newId=null;
   if(EDIT_TEAM){ ({error:err}=await sb.from('teams').update(payload).eq('id',EDIT_TEAM)); }
-  else { ({error:err}=await sb.from('teams').insert(payload)); }
+  else { const {data,error}=await sb.from('teams').insert(payload).select('id').single(); err=error; if(data) newId=data.id; }
   btn.disabled=false; btn.textContent='Salva';
   if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
-  el('modal-team').classList.remove('open'); EDIT_TEAM=null; viewTeams();
+  el('modal-team').classList.remove('open');
+  const wasEdit=!!EDIT_TEAM; EDIT_TEAM=null;
+  TEAM_CATEGORIES_CACHE=null; // esistenza/composizione dei team e' cambiata
+  const fromCompany=TEAM_CREATE_COMPANY; TEAM_CREATE_COMPANY=null;
+  // Scorciatoia creazione da azienda: appena creato, si passa subito ad
+  // aggiungere membri pre-filtrati su quella azienda (regola 1 — il primo
+  // membro si aggiunge nello stesso flusso, non in un passo separato).
+  if(!wasEdit && newId && fromCompany){
+    TEAM_MEMBERS_CACHE=[]; // team appena creato: nessun membro puo' gia' esserci
+    openTeamMemberModal(newId, fromCompany.id, ()=>enterCompany(fromCompany.id));
+  } else {
+    viewTeams();
+  }
 }
 async function delTeam(id,nome){
   if(!confirm('Eliminare definitivamente il team "'+nome+'"?\n\nVerranno rimossi anche i membri, le assegnazioni e gli incontri di gruppo registrati. L\'operazione non è reversibile.')) return;
   const {error}=await sb.from('teams').delete().eq('id',id);
   if(error){ alert('Errore: '+error.message); return; }
+  TEAM_CATEGORIES_CACHE=null;
   viewTeams();
 }
 
@@ -1658,18 +1707,37 @@ async function removeTeamMember(teamId,personId){
   if(!confirm('Rimuovere questa persona dal team?')) return;
   const {error}=await sb.from('team_members').delete().eq('team_id',teamId).eq('person_id',personId);
   if(error){ alert('Errore: '+error.message); return; }
+  TEAM_CATEGORIES_CACHE=null; // la composizione (e quindi la categoria) e' cambiata
   loadTeamMembers(teamId, ME.ruolo==='admin'||ME.ruolo==='consulente');
 }
-async function openTeamMemberModal(teamId){
-  el('tm-msg').className='msg'; el('tm-search').value=''; el('tm-results').innerHTML='';
+// companyFilter: se valorizzato, limita la ricerca alle persone di quella
+// azienda e pre-popola subito la lista (scorciatoia creazione da azienda).
+// onClose: richiamata alla chiusura del modal (es. per aggiornare la
+// scheda azienda da cui e' stata aperta la scorciatoia).
+async function openTeamMemberModal(teamId, companyFilter, onClose){
+  CURRENT_TEAM=teamId;
+  TEAM_MEMBER_FILTER_COMPANY=companyFilter||null;
+  TEAM_MEMBER_ONCLOSE=onClose||null;
+  el('tm-msg').className='msg';
+  el('tm-msg').textContent = TEAM_MEMBER_FILTER_COMPANY ? 'Elenco limitato alle persone di questa azienda.' : '';
+  el('tm-search').value=''; el('tm-results').innerHTML='';
   el('modal-team-member').classList.add('open');
+  if(TEAM_MEMBER_FILTER_COMPANY) searchTeamMembers();
+}
+function closeTeamMemberModal(){
+  el('modal-team-member').classList.remove('open');
+  const cb=TEAM_MEMBER_ONCLOSE;
+  TEAM_MEMBER_FILTER_COMPANY=null; TEAM_MEMBER_ONCLOSE=null;
+  if(cb) cb();
 }
 async function searchTeamMembers(){
   const q=el('tm-search').value.trim();
   const box=el('tm-results');
-  if(!q){ box.innerHTML=''; return; }
-  const {data,error}=await sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)')
-    .or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`).eq('archiviata',false).limit(20);
+  if(!q && !TEAM_MEMBER_FILTER_COMPANY){ box.innerHTML=''; return; }
+  let query=sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)').eq('archiviata',false).limit(20);
+  if(q) query=query.or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`);
+  if(TEAM_MEMBER_FILTER_COMPANY) query=query.eq('company_id',TEAM_MEMBER_FILTER_COMPANY);
+  const {data,error}=await query;
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   const already=new Set(TEAM_MEMBERS_CACHE.map(m=>m.person_id));
   const results=(data||[]).filter(p=>!already.has(p.id));
@@ -1680,7 +1748,8 @@ async function searchTeamMembers(){
   box.querySelectorAll('.tm-add').forEach(b=>b.addEventListener('click',async()=>{
     const {error:e}=await sb.from('team_members').insert({team_id:CURRENT_TEAM,person_id:b.dataset.id});
     if(e){ alert('Errore: '+e.message); return; }
-    await loadTeamMembers(CURRENT_TEAM, ME.ruolo==='admin'||ME.ruolo==='consulente');
+    TEAM_CATEGORIES_CACHE=null; // la composizione (e quindi la categoria) e' cambiata
+    if(el('team-members-list')) await loadTeamMembers(CURRENT_TEAM, ME.ruolo==='admin'||ME.ruolo==='consulente');
     searchTeamMembers();
   }));
 }
@@ -2063,11 +2132,11 @@ el('pat-newname').addEventListener('input', checkSimilar);
 el('pat-newsave').addEventListener('click', saveNewPatho);
 el('mm-cancel').addEventListener('click', ()=>{ el('modal-meeting').classList.remove('open'); });
 el('mm-save').addEventListener('click', saveMeeting);
-el('mt-cancel').addEventListener('click', ()=>{ el('modal-team').classList.remove('open'); EDIT_TEAM=null; });
+el('mt-cancel').addEventListener('click', ()=>{ el('modal-team').classList.remove('open'); EDIT_TEAM=null; TEAM_CREATE_COMPANY=null; });
 el('mt-save').addEventListener('click', saveTeamModal);
 el('ta-cancel').addEventListener('click', ()=>{ el('modal-team-assign').classList.remove('open'); });
 el('ta-save').addEventListener('click', saveTeamAssign);
-el('tm-cancel').addEventListener('click', ()=>{ el('modal-team-member').classList.remove('open'); });
+el('tm-cancel').addEventListener('click', closeTeamMemberModal);
 el('tm-search-btn').addEventListener('click', searchTeamMembers);
 el('tm-search').addEventListener('keydown', e=>{ if(e.key==='Enter') searchTeamMembers(); });
 el('tmm-cancel').addEventListener('click', ()=>{ el('modal-team-meeting').classList.remove('open'); });
@@ -2076,7 +2145,8 @@ el('sr-cancel').addEventListener('click', ()=>{ el('modal-selfrep').classList.re
 el('sr-save').addEventListener('click', saveSelfRep);
 el('mcal-cancel').addEventListener('click', ()=>{ el('modal-calendar').classList.remove('open'); });
 el('mcal-save').addEventListener('click', saveCalendar);
-[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-member'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+el('modal-team-member').addEventListener('click', e=>{ if(e.target===el('modal-team-member')) closeTeamMemberModal(); });
 
 // ══════════════════════════════════════════════════════════════════════════
 // WORK CALENDAR (tab "Le mie attività") — tutti gli identificatori
