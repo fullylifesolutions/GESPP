@@ -562,7 +562,7 @@ function showApp(){
   el('who-name').textContent=`${ME.nome} ${ME.cognome}`; el('who-email').textContent=ME.email; el('who-role').textContent=ROLE_LABEL[ME.ruolo]||ME.ruolo;
   renderTabs(); goTab('aziende');
 }
-async function doLogout(){ await sb.auth.signOut(); ME=null; el('email').value=''; el('password').value=''; showLogin(); }
+async function doLogout(){ await sb.auth.signOut(); window.location.href='../index.html'; }
 
 // ---------- TABS ----------
 function renderTabs(){
