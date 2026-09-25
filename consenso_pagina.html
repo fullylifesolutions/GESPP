@@ -43,7 +43,9 @@
 
 <script>
 // === CONFIG: indirizzo del guardiano (Edge Function) ===
-const FUNC_URL = "https://rronmtbpvhetoiddynmz.supabase.co/functions/v1/consenso";
+const FUNC_URL = (window.location.hostname.includes('github.io')
+  ? 'https://atpsnetvtefqsiaptnaf.supabase.co'
+  : 'https://rronmtbpvhetoiddynmz.supabase.co') + '/functions/v1/consenso';
 
 const stage = document.getElementById('stage');
 // legge token e canale dall'indirizzo: ...pagina.html?token=XXX&canale=presenza

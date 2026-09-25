@@ -1439,7 +1439,9 @@ async function revokeConsent(consentId, personId){
 // l'informativa, firma sul proprio dispositivo — consenso_firma() (RPC,
 // vedi schema) porta poi lo stato ad 'attivo'. Non serve login per la
 // pagina di firma, e' pensata per essere inviata via email/whatsapp.
-const CONSENSO_BASE_URL = 'https://fullylifesolutions.github.io/GESPP/consenso_pagina.html';
+const CONSENSO_BASE_URL = window.location.hostname.includes('github.io')
+  ? 'https://fullylifesolutions.github.io/GESPP/consenso_pagina.html'
+  : new URL('consenso_pagina.html', window.location.href).href;
 async function requestRemoteConsent(personId){
   const token = crypto.randomUUID();
   const scadenza = new Date(Date.now() + 7*24*60*60*1000).toISOString(); // 7 giorni
