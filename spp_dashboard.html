@@ -1428,7 +1428,7 @@ async function saveConsent(){
   loadHealth(HEALTH_PERSON);
 }
 async function revokeConsent(consentId, personId){
-  if(!confirm('Revocare il consenso? I dati sanitari diventeranno immediatamente inaccessibili.')) return;
+  if(!confirm('Revocare il consenso? I dati sanitari diventeranno immediatamente inaccessibili.\n\n⚠️ Ordine corretto per cancellare i dati di una persona: 1) cancella prima i dati sanitari, 2) poi revoca il consenso. Se revochi prima, i dati non saranno più visibili ma resteranno registrati.')) return;
   const {error}=await sb.from('health_consents').update({stato:'revocato',data_revoca:new Date().toISOString()}).eq('id',consentId);
   if(error){ alert('Errore: '+error.message); return; }
   loadHealth(personId);
