@@ -770,7 +770,7 @@ let SHOW_ARCH_PROF=false;
 // ---------- SCHEDA PERSONA ----------
 let CURRENT_PERSON=null, CURRENT_PERSON_OBJ=null;
 async function openPersonCard(id){
-  const {data:p}=await sb.from('persons').select('nome,cognome,tipo,reparto,ruolo_aziendale,professione,company_id').eq('id',id).single();
+  const {data:p}=await sb.from('persons').select('nome,cognome,email,tipo,reparto,ruolo_aziendale,professione,company_id').eq('id',id).single();
   CURRENT_PERSON=id; CURRENT_PERSON_OBJ=p;
   let back = TAB==='professionisti'
     ? `<a id="back-x">Professionisti</a>`
@@ -801,6 +801,10 @@ async function openPersonCard(id){
     <div class="section">
       <div class="sh"><span class="st">Incontri</span>${canWrite?'<button class="primary small" id="meet-new">+ Incontro</button>':''}</div>
       <div id="meet-body"><div class="spinner">Caricamento…</div></div>
+    </div>
+    <div class="section">
+      <div class="sh"><span class="st">Prenotazioni</span></div>
+      <div id="pbook-body"><div class="spinner">Caricamento…</div></div>
     </div>`;
   el('back-btn-top').addEventListener('click', ()=>{ if(TAB==='professionisti') goTab('professionisti'); else enterCompany(p.company_id); });
   if(canWrite) el('spp-new').addEventListener('click', ()=>openSppModal());
@@ -808,7 +812,44 @@ async function openPersonCard(id){
   loadSpp(id);
   loadHealth(id);
   loadMeetings(id);
+  loadPersonBookings(p);
   if(canWrite) el('meet-new').addEventListener('click', ()=>openMeetingModal());
+}
+
+// Prenotazioni della persona: booking_slots non ha person_id (i dati li
+// scrive il cliente nel form pubblico), quindi si abbinano per email o per
+// nome+cognome, dentro il calendario dell'azienda della persona (per i
+// professionisti il calendario condiviso con company_id null). Il filtro è
+// lato client per non comporre filtri PostgREST con testo libero; la RLS
+// limita già gli slot ai calendari visibili al consulente.
+async function loadPersonBookings(p){
+  const body=el('pbook-body');
+  let calQ=sb.from('booking_calendars').select('id');
+  calQ = p.company_id ? calQ.eq('company_id',p.company_id) : calQ.is('company_id',null);
+  const {data:cals,error:cErr}=await calQ;
+  if(cErr){ body.innerHTML=`<div class="empty">Errore: ${escapeHtml(cErr.message)}</div>`; return; }
+  if(!cals||!cals.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessun calendario prenotazioni collegato.</div>`; return; }
+  const {data,error}=await sb.from('booking_slots')
+    .select('id,data,ora,booker_nome,booker_cognome,booker_email,note')
+    .in('calendar_id',cals.map(c=>c.id)).eq('booked',true).order('data').order('ora');
+  if(error){ body.innerHTML=`<div class="empty">Errore: ${escapeHtml(error.message)}</div>`; return; }
+  const norm=s=>(s||'').trim().toLowerCase().replace(/\s+/g,' ');
+  const email=norm(p.email), nome=norm(p.nome), cognome=norm(p.cognome);
+  const mie=(data||[]).map(s=>{
+    const via = email && norm(s.booker_email)===email ? 'email'
+      : (norm(s.booker_nome)===nome && norm(s.booker_cognome)===cognome ? 'nome' : null);
+    return via ? {...s, via} : null;
+  }).filter(Boolean);
+  if(!mie.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessuna prenotazione trovata${email?'':' (la scheda non ha email: abbinamento solo per nome e cognome)'}.</div>`; return; }
+  const today=new Date().toISOString().slice(0,10);
+  const future=mie.filter(s=>s.data>=today), passate=mie.filter(s=>s.data<today).reverse();
+  const riga=s=>`<div class="sub-item"><div class="m">
+    <div>📅 ${GIORNI_IT[new Date(s.data+'T12:00:00').getDay()]} ${fmtDate(s.data)} · ${String(s.ora).slice(0,5)}</div>
+    <div class="d">${s.via==='email'?'abbinata per email':'abbinata per nome e cognome'}${s.note?' · '+escapeHtml(s.note):''}</div></div></div>`;
+  const titolo=t=>`<div style="font-size:12px;font-weight:600;color:var(--ink-soft);margin:10px 0 2px;">${t}</div>`;
+  body.innerHTML =
+    titolo('Prossime ('+future.length+')') + (future.length ? future.map(riga).join('') : `<div class="empty" style="padding:8px 0;">Nessuna prenotazione futura.</div>`) +
+    (passate.length ? titolo('Passate ('+passate.length+')') + passate.map(riga).join('') : '');
 }
 
 let SPP_ROWS=[];
