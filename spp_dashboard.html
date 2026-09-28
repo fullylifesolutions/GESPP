@@ -1037,7 +1037,9 @@ async function loadContacts(companyId,canWrite){
 // Sostituisce slot-booking/slot_admin.html: la gestione calendari vive qui,
 // dentro la sessione già autenticata di GESPP, niente più password condivisa.
 const BOOK_DAYS=['','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
-const BOOKING_BASE_URL='https://fullylifesolutions.github.io/slot-booking/slot_booking.html';
+const BOOKING_BASE_URL = window.location.hostname.includes('github.io')
+  ? 'https://fullylifesolutions.github.io/slot-booking/slot_booking.html'
+  : new URL('../slot-booking/slot_booking.html', window.location.href).href;
 let CAL_STATE={};
 
 // company_id null (pool "Liberi Professionisti") va cercato con .is(), non
@@ -1181,12 +1183,22 @@ async function openCalendarBookings(cal, canWrite, nome, backFn){
     ${canWrite?`<div class="section"><div class="sh"><span class="st">Blocca uno slot</span></div>
       <div class="grid2"><div><label>Data</label><input type="date" id="cb-block-date"></div><div><label>Ora</label><input type="time" id="cb-block-time"></div></div>
       <button class="primary small" id="cb-block-btn">Blocca</button></div>`:''}
-    <div class="section"><div class="sh"><span class="st">Elenco</span></div><div id="cb-list"><div class="spinner">Caricamento…</div></div></div>`;
+    <div class="section"><div class="sh"><span class="st">Elenco</span>
+      <button class="small" id="cb-view-giorni">Per giorno</button>&nbsp;<button class="small" id="cb-view-elenco">Elenco completo</button></div>
+      <div id="cb-list"><div class="spinner">Caricamento…</div></div></div>`;
   el('cb-back').addEventListener('click', backFn);
   el('cb-x').addEventListener('click', backFn);
   if(canWrite) el('cb-block-btn').addEventListener('click', ()=>blockSlot(cal.id, canWrite));
+  CB_OPEN_DAYS=new Set();
+  el('cb-view-giorni').addEventListener('click', ()=>{ CB_VIEW='giorni'; renderCalendarBookingsList(cal.id, canWrite); });
+  el('cb-view-elenco').addEventListener('click', ()=>{ CB_VIEW='elenco'; renderCalendarBookingsList(cal.id, canWrite); });
   await loadCalendarBookingsList(cal.id, canWrite);
 }
+// vista "per giorno": un'intestazione per data, cliccandola si aprono gli
+// slot di quel giorno. Aprire/chiudere un giorno o cambiare vista non
+// rilegge il DB; i giorni aperti restano aperti dopo una cancellazione.
+let CB_VIEW='giorni', CB_OPEN_DAYS=new Set(), CB_DATA=[];
+const GIORNI_IT=['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 async function loadCalendarBookingsList(calendarId, canWrite){
   const list=el('cb-list');
   const today=new Date().toISOString().slice(0,10);
@@ -1194,11 +1206,37 @@ async function loadCalendarBookingsList(calendarId, canWrite){
     .select('id,data,ora,booked,blocked,booker_nome,booker_cognome,booker_email,note')
     .eq('calendar_id',calendarId).gte('data',today).order('data').order('ora');
   if(error){ list.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  CB_DATA=data;
+  renderCalendarBookingsList(calendarId, canWrite);
+}
+function renderCalendarBookingsList(calendarId, canWrite){
+  const list=el('cb-list'), data=CB_DATA;
+  el('cb-view-giorni').className = CB_VIEW==='giorni' ? 'primary small' : 'ghost small';
+  el('cb-view-elenco').className = CB_VIEW==='elenco' ? 'primary small' : 'ghost small';
   if(!data.length){ list.innerHTML=`<div class="empty">Nessuna prenotazione o blocco da oggi in poi.</div>`; return; }
-  list.innerHTML=data.map(s=>`<div class="sub-item">
-    <div class="m"><div>${s.blocked?'🚫':'📅'} ${fmtDate(s.data)} · ${String(s.ora).slice(0,5)}</div>
+  const riga=(s, conData)=>`<div class="sub-item">
+    <div class="m"><div>${s.blocked?'🚫':'📅'} ${conData?fmtDate(s.data)+' · ':''}${String(s.ora).slice(0,5)}</div>
     <div class="d">${s.blocked?'Bloccato manualmente':escapeHtml((s.booker_nome||'')+' '+(s.booker_cognome||'')+' · '+(s.booker_email||''))+(s.note?' · '+escapeHtml(s.note):'')}</div></div>
-    ${canWrite?'<button class="ghost small danger cb-del" data-id="'+s.id+'">'+(s.blocked?'Sblocca':'Cancella')+'</button>':''}</div>`).join('');
+    ${canWrite?'<button class="ghost small danger cb-del" data-id="'+s.id+'">'+(s.blocked?'Sblocca':'Cancella')+'</button>':''}</div>`;
+  if(CB_VIEW==='elenco'){
+    list.innerHTML=data.map(s=>riga(s,true)).join('');
+  } else {
+    const perGiorno={};
+    data.forEach(s=>{ (perGiorno[s.data]=perGiorno[s.data]||[]).push(s); });
+    list.innerHTML=Object.keys(perGiorno).map(d=>{
+      const slots=perGiorno[d], aperto=CB_OPEN_DAYS.has(d);
+      const nPren=slots.filter(s=>!s.blocked).length, nBlocc=slots.length-nPren;
+      const conteggio=[nPren?nPren+(nPren===1?' prenotazione':' prenotazioni'):'', nBlocc?nBlocc+(nBlocc===1?' bloccato':' bloccati'):''].filter(Boolean).join(' · ');
+      return `<div class="sub-item cb-day" data-d="${d}" style="cursor:pointer;">
+        <div class="m"><div><strong>${aperto?'▾':'▸'} ${GIORNI_IT[new Date(d+'T12:00:00').getDay()]} ${fmtDate(d)}</strong></div>
+        <div class="d">${conteggio}</div></div></div>
+        ${aperto?`<div style="padding-left:22px;">${slots.map(s=>riga(s,false)).join('')}</div>`:''}`;
+    }).join('');
+    list.querySelectorAll('.cb-day').forEach(h=>h.addEventListener('click',()=>{
+      const d=h.dataset.d; CB_OPEN_DAYS.has(d)?CB_OPEN_DAYS.delete(d):CB_OPEN_DAYS.add(d);
+      renderCalendarBookingsList(calendarId,canWrite);
+    }));
+  }
   if(canWrite) list.querySelectorAll('.cb-del').forEach(b=>b.addEventListener('click',async()=>{
     if(!confirm('Confermi?')) return;
     const {error}=await sb.from('booking_slots').delete().eq('id',b.dataset.id);
