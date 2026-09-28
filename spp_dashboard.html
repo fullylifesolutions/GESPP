@@ -690,7 +690,7 @@ async function loadCompanyTeams(companyId){
 // ---------- PERSONE (dipendenti dentro azienda) ----------
 async function loadPersons(companyId,canWrite){
   const box=el('persons-list');
-  const {data,error}=await sb.from('persons').select('id,nome,cognome,reparto,ruolo_aziendale,site_id,archiviata').eq('company_id',companyId).order('archiviata').order('cognome');
+  const {data,error}=await sb.from('persons').select('id,nome,cognome,reparto,ruolo_aziendale,site_id,archiviata').eq('company_id',companyId).order('archiviata').order('nome').order('cognome');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna persona inserita.</div>`; return; }
   const visibili = SHOW_ARCH_PERS ? data : data.filter(p=>!p.archiviata);
@@ -732,7 +732,7 @@ async function viewProfessionals(){
     ${isAdmin?'<button class="primary" id="new-prof">+ Nuovo professionista</button>':''}</div>
     <div class="list" id="prof-list"><div class="spinner">Caricamento…</div></div>`;
   if(isAdmin) el('new-prof').addEventListener('click',()=>openPersonModal(null,'professionista'));
-  const {data,error}=await sb.from('persons').select('id,nome,cognome,professione,archiviata').eq('tipo','professionista').order('archiviata').order('cognome');
+  const {data,error}=await sb.from('persons').select('id,nome,cognome,professione,archiviata').eq('tipo','professionista').order('archiviata').order('nome').order('cognome');
   const list=el('prof-list');
   if(error){ list.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   if(!data.length){ list.innerHTML=`<div class="empty">Nessun professionista. ${isAdmin?'Creane uno.':''}</div>`; return; }
