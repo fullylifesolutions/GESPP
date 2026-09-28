@@ -515,7 +515,7 @@ const ROLE_LABEL = { admin:'Amministratore', consulente:'Consulente', consulente
 let ME=null, EDIT_COMPANY=null, CURRENT_COMPANY=null, EDIT_SITE=null, EDIT_CONTACT=null;
 let EDIT_PERSON=null, PERSON_MODE='dipendente'; // 'dipendente' | 'professionista'
 let TAB='aziende';
-let CURRENT_TEAM=null, EDIT_TEAM=null, TEAM_ASSIGN_ID=null, EDIT_TEAM_MEETING=null;
+let CURRENT_TEAM=null, CURRENT_TEAM_NOME='', EDIT_TEAM=null, TEAM_ASSIGN_ID=null, EDIT_TEAM_MEETING=null;
 let TEAM_MEMBERS_CACHE=[]; // ultimo team_members_light caricato, per escludere i già-membri dal picker
 let TEAM_CATEGORIES_CACHE=null; // cache di sessione di team_categories(): [{team_id,nome,n_aziende,company_id}], null=da ricaricare
 let TEAM_CREATE_COMPANY=null; // {id,nome} quando "Nuovo team" e' aperto dalla scheda azienda (scorciatoia)
@@ -769,20 +769,26 @@ let SHOW_ARCH_PROF=false;
 
 // ---------- SCHEDA PERSONA ----------
 let CURRENT_PERSON=null, CURRENT_PERSON_OBJ=null;
-async function openPersonCard(id){
+// daTeam: aperta dall'elenco membri di un team (CURRENT_TEAM) -> il
+// "indietro" torna al team invece che all'azienda/professionisti.
+async function openPersonCard(id, daTeam){
   const {data:p}=await sb.from('persons').select('nome,cognome,email,tipo,reparto,ruolo_aziendale,professione,company_id').eq('id',id).single();
   CURRENT_PERSON=id; CURRENT_PERSON_OBJ=p;
-  let back = TAB==='professionisti'
+  const teamId=daTeam?CURRENT_TEAM:null;
+  let back = teamId
+    ? `<a id="back-x">Team</a> › <a id="back-team">${escapeHtml(CURRENT_TEAM_NOME||'team')}</a>`
+    : TAB==='professionisti'
     ? `<a id="back-x">Professionisti</a>`
     : `<a id="back-x">Aziende</a> › <a id="back-comp">azienda</a>`;
   el('crumbs').innerHTML = `${back} › ${escapeHtml(p?p.nome+' '+p.cognome:'')}`;
-  if(TAB==='professionisti'){ el('back-x').addEventListener('click',()=>goTab('professionisti')); }
+  if(teamId){ el('back-x').addEventListener('click',()=>goTab('team')); el('back-team').addEventListener('click',()=>enterTeam(teamId)); }
+  else if(TAB==='professionisti'){ el('back-x').addEventListener('click',()=>goTab('professionisti')); }
   else { el('back-x').addEventListener('click',()=>goTab('aziende')); el('back-comp').addEventListener('click',()=>enterCompany(p.company_id)); }
   const dett = p.tipo==='professionista' ? escapeHtml(p.professione||'Professionista')
     : [escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||'')].filter(Boolean).join(' · ')||'Dipendente';
   const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
   const isAdmin=ME.ruolo==='admin';
-  const backLabel = TAB==='professionisti' ? '← Professionisti' : '← Azienda';
+  const backLabel = teamId ? '← Team' : TAB==='professionisti' ? '← Professionisti' : '← Azienda';
   el('content').innerHTML=`
     <button class="back-btn" id="back-btn-top">${backLabel}</button>
     <div class="row-head"><div style="flex:1;"><h2 class="panel-title">${escapeHtml(p.nome+' '+p.cognome)}</h2><p class="panel-sub">${dett}</p></div>
@@ -806,7 +812,7 @@ async function openPersonCard(id){
       <div class="sh"><span class="st">Prenotazioni</span></div>
       <div id="pbook-body"><div class="spinner">Caricamento…</div></div>
     </div>`;
-  el('back-btn-top').addEventListener('click', ()=>{ if(TAB==='professionisti') goTab('professionisti'); else enterCompany(p.company_id); });
+  el('back-btn-top').addEventListener('click', ()=>{ if(teamId) enterTeam(teamId); else if(TAB==='professionisti') goTab('professionisti'); else enterCompany(p.company_id); });
   if(canWrite) el('spp-new').addEventListener('click', ()=>openSppModal());
   if(isAdmin && p.tipo==='professionista') el('passign-btn').addEventListener('click', ()=>openProfAssign(id));
   loadSpp(id);
@@ -1758,6 +1764,7 @@ async function delTeam(id,nome){
 async function enterTeam(id){
   CURRENT_TEAM=id;
   const {data:t}=await sb.from('teams').select('nome,descrizione,attivo').eq('id',id).single();
+  CURRENT_TEAM_NOME=t?t.nome:'';
   el('crumbs').innerHTML=`<a id="back-teams">Team</a> › ${escapeHtml(t?t.nome:'')}`;
   el('back-teams').addEventListener('click',()=>goTab('team'));
   const isAdmin=ME.ruolo==='admin';
@@ -1796,10 +1803,18 @@ async function loadTeamMembers(teamId,canWrite){
   (data||[]).sort((a,b)=>(a.cognome+a.nome).localeCompare(b.cognome+b.nome,'it'));
   TEAM_MEMBERS_CACHE=data||[];
   if(!data||!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun membro nel team.</div>`; return; }
-  box.innerHTML=data.map(m=>`<div class="sub-item"><div class="li-av">${initials(m.nome,m.cognome)}</div>
+  // team_members_light bypassa la RLS di persons: un membro di un'azienda
+  // non collegata al consulente compare qui ma la sua scheda non è
+  // accessibile. Quali schede si possono aprire lo decide la RLS stessa:
+  // una select su persons restituisce solo gli id visibili.
+  const {data:vis}=await sb.from('persons').select('id').in('id',data.map(m=>m.person_id));
+  const apribili=new Set((vis||[]).map(v=>v.id));
+  box.innerHTML=data.map(m=>{ const ok=apribili.has(m.person_id);
+    return `<div class="sub-item"${ok?' style="cursor:pointer;" data-open="'+m.person_id+'"':''}><div class="li-av">${initials(m.nome,m.cognome)}</div>
     <div class="m"><div>${escapeHtml(m.nome+' '+m.cognome)}</div>
-    <div class="d">${escapeHtml(m.ragione_sociale||'')||'—'}</div></div>
-    ${canWrite?'<button class="ghost small danger tm-remove" data-id="'+m.person_id+'">Rimuovi</button>':''}</div>`).join('');
+    <div class="d">${escapeHtml(m.ragione_sociale||'')||'—'}${ok?'':' · scheda non accessibile'}</div></div>
+    ${canWrite?'<button class="ghost small danger tm-remove" data-id="'+m.person_id+'">Rimuovi</button>':''}${ok?'<span class="li-arrow">›</span>':''}</div>`; }).join('');
+  box.querySelectorAll('[data-open]').forEach(it=>it.addEventListener('click',e=>{ if(e.target.classList.contains('tm-remove')) return; openPersonCard(it.dataset.open, true); }));
   if(canWrite) box.querySelectorAll('.tm-remove').forEach(b=>b.addEventListener('click',()=>removeTeamMember(teamId,b.dataset.id)));
 }
 async function removeTeamMember(teamId,personId){
