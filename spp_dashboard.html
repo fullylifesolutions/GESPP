@@ -515,7 +515,7 @@ const ROLE_LABEL = { admin:'Amministratore', consulente:'Consulente', consulente
 let ME=null, EDIT_COMPANY=null, CURRENT_COMPANY=null, EDIT_SITE=null, EDIT_CONTACT=null;
 let EDIT_PERSON=null, PERSON_MODE='dipendente'; // 'dipendente' | 'professionista'
 let TAB='aziende';
-let CURRENT_TEAM=null, CURRENT_TEAM_NOME='', EDIT_TEAM=null, TEAM_ASSIGN_ID=null, EDIT_TEAM_MEETING=null;
+let CURRENT_TEAM=null, CURRENT_TEAM_NOME='', CURRENT_TEAM_DA_AZIENDA=null, EDIT_TEAM=null, TEAM_ASSIGN_ID=null, EDIT_TEAM_MEETING=null;
 let TEAM_MEMBERS_CACHE=[]; // ultimo team_members_light caricato, per escludere i già-membri dal picker
 let TEAM_CATEGORIES_CACHE=null; // cache di sessione di team_categories(): [{team_id,nome,n_aziende,company_id}], null=da ricaricare
 let TEAM_CREATE_COMPANY=null; // {id,nome} quando "Nuovo team" e' aperto dalla scheda azienda (scorciatoia)
@@ -672,19 +672,19 @@ async function enterCompany(id){
     el('add-contact').addEventListener('click',()=>openContactModal(null));
   }
   if(isAdmin) el('add-team').addEventListener('click',()=>{ TEAM_CREATE_COMPANY={id, nome:c?c.ragione_sociale:''}; openTeamModal(null); });
-  loadPersons(id,canWrite); loadSites(id,canWrite); loadContacts(id,canWrite); loadCompanyTeams(id);
+  loadPersons(id,canWrite); loadSites(id,canWrite); loadContacts(id,canWrite); loadCompanyTeams(id, c?c.ragione_sociale:'Azienda');
   loadCalendarBox(id, canWrite, c?c.ragione_sociale:'Azienda', 'calendar-box', ()=>enterCompany(id));
 }
 
 // ---------- TEAM INTERNI ALL'AZIENDA (derivati da team_categories(), n_aziende=1) ----------
-async function loadCompanyTeams(companyId){
+async function loadCompanyTeams(companyId, companyName){
   const box=el('company-team-list');
   const categories=await loadTeamCategories();
   const teams=categories.filter(c=>c.n_aziende===1 && c.company_id===companyId);
   if(!teams.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun team interno a questa azienda.</div>`; return; }
   box.innerHTML=teams.map(t=>`<div class="sub-item" style="cursor:pointer;" data-id="${t.team_id}"><div class="li-ic">👥</div>
     <div class="m"><div>${escapeHtml(t.nome)}</div></div><span class="li-arrow">›</span></div>`).join('');
-  box.querySelectorAll('.sub-item').forEach(it=>it.addEventListener('click',()=>enterTeam(it.dataset.id)));
+  box.querySelectorAll('.sub-item').forEach(it=>it.addEventListener('click',()=>enterTeam(it.dataset.id, {id:companyId, nome:companyName})));
 }
 
 // ---------- PERSONE (dipendenti dentro azienda) ----------
@@ -775,13 +775,19 @@ async function openPersonCard(id, daTeam){
   const {data:p}=await sb.from('persons').select('nome,cognome,email,tipo,reparto,ruolo_aziendale,professione,company_id').eq('id',id).single();
   CURRENT_PERSON=id; CURRENT_PERSON_OBJ=p;
   const teamId=daTeam?CURRENT_TEAM:null;
+  const teamAz=teamId?CURRENT_TEAM_DA_AZIENDA:null; // team aperto dalla scheda azienda
   let back = teamId
-    ? `<a id="back-x">Team</a> › <a id="back-team">${escapeHtml(CURRENT_TEAM_NOME||'team')}</a>`
+    ? (teamAz ? `<a id="back-x">Aziende</a> › <a id="back-teamaz">${escapeHtml(teamAz.nome)}</a>` : `<a id="back-x">Team</a>`)
+      + ` › <a id="back-team">${escapeHtml(CURRENT_TEAM_NOME||'team')}</a>`
     : TAB==='professionisti'
     ? `<a id="back-x">Professionisti</a>`
     : `<a id="back-x">Aziende</a> › <a id="back-comp">azienda</a>`;
   el('crumbs').innerHTML = `${back} › ${escapeHtml(p?p.nome+' '+p.cognome:'')}`;
-  if(teamId){ el('back-x').addEventListener('click',()=>goTab('team')); el('back-team').addEventListener('click',()=>enterTeam(teamId)); }
+  if(teamId){
+    el('back-team').addEventListener('click',()=>enterTeam(teamId, teamAz));
+    if(teamAz){ el('back-x').addEventListener('click',()=>goTab('aziende')); el('back-teamaz').addEventListener('click',()=>enterCompany(teamAz.id)); }
+    else el('back-x').addEventListener('click',()=>goTab('team'));
+  }
   else if(TAB==='professionisti'){ el('back-x').addEventListener('click',()=>goTab('professionisti')); }
   else { el('back-x').addEventListener('click',()=>goTab('aziende')); el('back-comp').addEventListener('click',()=>enterCompany(p.company_id)); }
   const dett = p.tipo==='professionista' ? escapeHtml(p.professione||'Professionista')
@@ -812,7 +818,7 @@ async function openPersonCard(id, daTeam){
       <div class="sh"><span class="st">Prenotazioni</span></div>
       <div id="pbook-body"><div class="spinner">Caricamento…</div></div>
     </div>`;
-  el('back-btn-top').addEventListener('click', ()=>{ if(teamId) enterTeam(teamId); else if(TAB==='professionisti') goTab('professionisti'); else enterCompany(p.company_id); });
+  el('back-btn-top').addEventListener('click', ()=>{ if(teamId) enterTeam(teamId, teamAz); else if(TAB==='professionisti') goTab('professionisti'); else enterCompany(p.company_id); });
   if(canWrite) el('spp-new').addEventListener('click', ()=>openSppModal());
   if(isAdmin && p.tipo==='professionista') el('passign-btn').addEventListener('click', ()=>openProfAssign(id));
   loadSpp(id);
@@ -1761,22 +1767,29 @@ async function delTeam(id,nome){
   viewTeams();
 }
 
-async function enterTeam(id){
-  CURRENT_TEAM=id;
+// daAzienda: {id, nome} se il team è stato aperto dalla scheda azienda
+// (team interni) -> indietro/breadcrumb tornano all'azienda, non alla lista
+// globale dei team. Assente = aperto dalla tab Team.
+async function enterTeam(id, daAzienda){
+  CURRENT_TEAM=id; CURRENT_TEAM_DA_AZIENDA=daAzienda||null;
   const {data:t}=await sb.from('teams').select('nome,descrizione,attivo').eq('id',id).single();
   CURRENT_TEAM_NOME=t?t.nome:'';
-  el('crumbs').innerHTML=`<a id="back-teams">Team</a> › ${escapeHtml(t?t.nome:'')}`;
-  el('back-teams').addEventListener('click',()=>goTab('team'));
+  const az=CURRENT_TEAM_DA_AZIENDA;
+  el('crumbs').innerHTML = az
+    ? `<a id="back-companies">Aziende</a> › <a id="back-comp">${escapeHtml(az.nome)}</a> › ${escapeHtml(t?t.nome:'')}`
+    : `<a id="back-teams">Team</a> › ${escapeHtml(t?t.nome:'')}`;
+  if(az){ el('back-companies').addEventListener('click',()=>goTab('aziende')); el('back-comp').addEventListener('click',()=>enterCompany(az.id)); }
+  else el('back-teams').addEventListener('click',()=>goTab('team'));
   const isAdmin=ME.ruolo==='admin';
   const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
   el('content').innerHTML=`
-    <button class="back-btn" id="back-btn-top">← Team</button>
+    <button class="back-btn" id="back-btn-top">${az?'← '+escapeHtml(az.nome):'← Team'}</button>
     <div class="row-head"><div style="flex:1;"><h2 class="panel-title">${escapeHtml(t?t.nome:'Team')}${t&&!t.attivo?' <span style="font-size:12px;color:var(--ink-soft);">(non attivo)</span>':''}</h2>
     <p class="panel-sub">${escapeHtml(t&&t.descrizione||'')||'Percorso di gruppo'}</p></div>
     ${isAdmin?'<button class="ghost small" id="team-assign-btn">Consulenti</button>':''}</div>
     <div class="section"><div class="sh"><span class="st">Membri</span>${canWrite?'<button class="primary small" id="add-member">+ Aggiungi membro</button>':''}</div><div id="team-members-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Incontri di gruppo</span>${canWrite?'<button class="primary small" id="add-team-meeting">+ Incontro</button>':''}</div><div id="team-meetings-list"><div class="spinner">Caricamento…</div></div></div>`;
-  el('back-btn-top').addEventListener('click',()=>goTab('team'));
+  el('back-btn-top').addEventListener('click',()=>{ if(az) enterCompany(az.id); else goTab('team'); });
   if(isAdmin) el('team-assign-btn').addEventListener('click',()=>openTeamAssignModal(id));
   if(canWrite){
     // Team già "interno" a un'azienda (n_aziende=1): propone direttamente
