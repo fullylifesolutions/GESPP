@@ -1284,12 +1284,26 @@ function renderCalendarBookingsList(calendarId, canWrite){
       const conteggio=[nPren?nPren+(nPren===1?' prenotazione':' prenotazioni'):'', nBlocc?nBlocc+(nBlocc===1?' bloccato':' bloccati'):''].filter(Boolean).join(' · ');
       return `<div class="sub-item cb-day" data-d="${d}" style="cursor:pointer;">
         <div class="m"><div><strong>${aperto?'▾':'▸'} ${GIORNI_IT[new Date(d+'T12:00:00').getDay()]} ${fmtDate(d)}</strong></div>
-        <div class="d">${conteggio}</div></div></div>
+        <div class="d">${conteggio}</div></div>
+        ${(canWrite&&nBlocc)?'<button class="ghost small cb-unblockday" data-d="'+d+'" data-n="'+nBlocc+'">Sblocca giornata</button>':''}</div>
         ${aperto?`<div style="padding-left:22px;">${slots.map(s=>riga(s,false)).join('')}</div>`:''}`;
     }).join('');
-    list.querySelectorAll('.cb-day').forEach(h=>h.addEventListener('click',()=>{
+    list.querySelectorAll('.cb-day').forEach(h=>h.addEventListener('click',e=>{
+      if(e.target.classList.contains('cb-unblockday')) return;
       const d=h.dataset.d; CB_OPEN_DAYS.has(d)?CB_OPEN_DAYS.delete(d):CB_OPEN_DAYS.add(d);
       renderCalendarBookingsList(calendarId,canWrite);
+    }));
+    // Sblocca giornata: rimuove solo le righe bloccate di quel giorno, mai
+    // le prenotazioni (filtro blocked=true e booked=false).
+    if(canWrite) list.querySelectorAll('.cb-unblockday').forEach(b=>b.addEventListener('click',async e=>{
+      e.stopPropagation();
+      const d=b.dataset.d;
+      if(!confirm(`Sbloccare ${b.dataset.n} slot il ${fmtDate(d)}?\n\nLe prenotazioni di quel giorno non vengono toccate.`)) return;
+      const {data:tolti,error}=await sb.from('booking_slots').delete()
+        .eq('calendar_id',calendarId).eq('data',d).eq('blocked',true).eq('booked',false).select('id');
+      if(error){ alert('Errore: '+error.message); return; }
+      if(!tolti||!tolti.length){ alert('Nessuno slot sbloccato: verifica i permessi o ricarica la pagina.'); }
+      loadCalendarBookingsList(calendarId,canWrite);
     }));
   }
   if(canWrite) list.querySelectorAll('.cb-del').forEach(b=>b.addEventListener('click',async()=>{
