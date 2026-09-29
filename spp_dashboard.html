@@ -406,6 +406,8 @@
 <!-- MODAL CALENDARIO PRENOTAZIONI -->
 <div class="modal-bg" id="modal-calendar"><div class="modal">
   <h3 id="mcal-title">Calendario prenotazioni</h3><div id="mcal-msg" class="msg"></div>
+  <label>Nome calendario *</label><input type="text" id="cal-nome" placeholder="es. Rossi Srl — Visite">
+  <p style="font-size:11px;color:var(--ink-soft);margin:-4px 0 10px;">È il nome che vede il cliente nella pagina di prenotazione e nell'email di conferma.</p>
   <div class="grid2">
     <div><label>Durata slot (minuti) *</label><input type="number" id="cal-duration" value="30"></div>
     <div><label>Max prenotazioni/giorno</label><input type="number" id="cal-maxday" placeholder="illimitato"></div>
@@ -1102,36 +1104,40 @@ function calQuery(companyId){
   return companyId ? q.eq('company_id',companyId) : q.is('company_id',null);
 }
 
+// Un'azienda può avere più calendari (servizi diversi, indipendenti:
+// orari, durata e limite propri). Il pool "Liberi Professionisti"
+// (companyId null) resta a calendario unico: niente "+ Nuovo" se ne esiste già uno.
 async function loadCalendarBox(companyId, canWrite, nome, boxId, backFn){
   const box=el(boxId);
-  const {data:cal,error}=await calQuery(companyId).maybeSingle();
+  const {data:cals,error}=await calQuery(companyId).order('nome');
   const reload=()=>loadCalendarBox(companyId,canWrite,nome,boxId,backFn);
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
-  if(!cal){
-    box.innerHTML = `<div class="empty" style="padding:14px 0;">Nessun calendario configurato.</div>`
-      + (canWrite?`<button class="primary small" id="cal-create">+ Crea calendario</button>`:'');
-    if(canWrite) el('cal-create').addEventListener('click',()=>openCalendarAdmin(companyId, nome, null, reload));
-    return;
-  }
-  box.innerHTML = renderCalendarSummary(cal, canWrite);
-  el('cal-copylink').addEventListener('click', ()=>copyCalLink(cal));
-  el('cal-manage').addEventListener('click', ()=>openCalendarBookings(cal, canWrite, nome, backFn));
-  if(canWrite) el('cal-edit').addEventListener('click', ()=>openCalendarAdmin(companyId, nome, cal, reload));
-  if(ME.ruolo==='admin') el('cal-delete').addEventListener('click', ()=>deleteCalendar(cal.id, reload));
+  const puoCreare = canWrite && (companyId || !cals.length);
+  box.innerHTML = (cals.length
+      ? cals.map(cal=>renderCalendarSummary(cal, canWrite)).join('')
+      : `<div class="empty" style="padding:14px 0;">Nessun calendario configurato.</div>`)
+    + (puoCreare?`<button class="primary small" id="cal-create" style="margin-top:10px;">${cals.length?'+ Nuovo calendario':'+ Crea calendario'}</button>`:'');
+  if(puoCreare) el('cal-create').addEventListener('click',()=>openCalendarAdmin(companyId, nome, null, reload, cals.length));
+  const byId=id=>cals.find(c=>c.id===id);
+  box.querySelectorAll('.cal-copylink').forEach(b=>b.addEventListener('click',()=>copyCalLink(byId(b.dataset.id))));
+  box.querySelectorAll('.cal-manage').forEach(b=>b.addEventListener('click',()=>{ const cal=byId(b.dataset.id); openCalendarBookings(cal, canWrite, cal.nome, backFn); }));
+  if(canWrite) box.querySelectorAll('.cal-edit').forEach(b=>b.addEventListener('click',()=>openCalendarAdmin(companyId, nome, byId(b.dataset.id), reload)));
+  if(ME.ruolo==='admin') box.querySelectorAll('.cal-delete').forEach(b=>b.addEventListener('click',()=>deleteCalendar(b.dataset.id, reload)));
 }
 
 function renderCalendarSummary(cal, canWrite){
   const days=(cal.schedules||[]).map(s=>BOOK_DAYS[s.day]).join(', ')||'—';
   return `<div class="sub-item" style="align-items:flex-start;">
     <div class="m">
-      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${escapeHtml(cal.color||'#7c6fcd')};margin-right:6px;"></span>${cal.duration_min} min · ${escapeHtml(days)}${cal.pin?' · 🔒 codice richiesto':''}</div>
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${escapeHtml(cal.color||'#7c6fcd')};margin-right:6px;"></span><strong>${escapeHtml(cal.nome)}</strong></div>
+      <div class="d">${cal.duration_min} min · ${escapeHtml(days)}${cal.pin?' · 🔒 codice richiesto':''}</div>
       <div class="d">${cal.max_per_day?('Max '+cal.max_per_day+'/giorno · '):''}${cal.start_date?('dal '+fmtDate(cal.start_date)+' '):''}${cal.end_date?('al '+fmtDate(cal.end_date)):''}${cal.email_notifiche?(' · notifiche a '+escapeHtml(cal.email_notifiche)):''}</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
-      <button class="ghost small" id="cal-copylink">Copia link</button>
-      <button class="ghost small" id="cal-manage">Prenotazioni</button>
-      ${canWrite?'<button class="ghost small" id="cal-edit">Configura</button>':''}
-      ${ME.ruolo==='admin'?'<button class="ghost small danger" id="cal-delete">Elimina</button>':''}
+      <button class="ghost small cal-copylink" data-id="${cal.id}">Copia link</button>
+      <button class="ghost small cal-manage" data-id="${cal.id}">Prenotazioni</button>
+      ${canWrite?'<button class="ghost small cal-edit" data-id="'+cal.id+'">Configura</button>':''}
+      ${ME.ruolo==='admin'?'<button class="ghost small danger cal-delete" data-id="'+cal.id+'">Elimina</button>':''}
     </div>
   </div>`;
 }
@@ -1150,10 +1156,13 @@ async function deleteCalendar(calId, reload){
 }
 
 // ---- configurazione calendario (orari, PIN, durata, ecc.) ----
-function openCalendarAdmin(companyId, nome, existingCal, onSaved){
+// nEsistenti: quanti calendari ha già l'azienda (per un nuovo calendario):
+// il primo prende il nome dell'azienda, i successivi "Azienda — " da completare.
+function openCalendarAdmin(companyId, nome, existingCal, onSaved, nEsistenti){
   CAL_STATE={companyId, editId: existingCal?existingCal.id:null, nome, onSaved};
   el('mcal-msg').className='msg';
-  el('mcal-title').textContent = existingCal ? 'Configura calendario — '+nome : 'Crea calendario — '+nome;
+  el('mcal-title').textContent = existingCal ? 'Configura calendario — '+existingCal.nome : 'Nuovo calendario — '+nome;
+  el('cal-nome').value = existingCal ? existingCal.nome : (nEsistenti ? nome+' — ' : nome);
   el('cal-duration').value = existingCal?existingCal.duration_min:30;
   el('cal-maxday').value = (existingCal&&existingCal.max_per_day)?existingCal.max_per_day:'';
   el('cal-start').value = existingCal?(existingCal.start_date||''):'';
@@ -1199,13 +1208,15 @@ function readScheduleEditor(){
 }
 async function saveCalendar(){
   const msg=el('mcal-msg'); msg.className='msg';
+  const nomeCal=el('cal-nome').value.trim();
+  if(!nomeCal||/—$/.test(nomeCal)){ msg.textContent='Inserisci il nome del calendario (es. il servizio).'; msg.className='msg err'; return; }
   const duration=parseInt(el('cal-duration').value);
   if(!duration||duration<5){ msg.textContent='Durata slot non valida.'; msg.className='msg err'; return; }
   const schedules=readScheduleEditor();
   if(!schedules.length){ msg.textContent='Seleziona almeno un giorno con un orario valido.'; msg.className='msg err'; return; }
   const payload={
     company_id: CAL_STATE.companyId,
-    nome: CAL_STATE.nome,
+    nome: nomeCal,
     color: el('cal-color').value,
     duration_min: duration,
     schedules,
