@@ -1235,13 +1235,15 @@ async function openCalendarBookings(cal, canWrite, nome, backFn){
     <p class="panel-sub">Slot occupati o bloccati da oggi in poi, per "${escapeHtml(nome)}".</p></div></div>
     ${canWrite?`<div class="section"><div class="sh"><span class="st">Blocca uno slot</span></div>
       <div class="grid2"><div><label>Data</label><input type="date" id="cb-block-date"></div><div><label>Ora</label><input type="time" id="cb-block-time"></div></div>
-      <button class="primary small" id="cb-block-btn">Blocca</button></div>`:''}
+      <button class="primary small" id="cb-block-btn">Blocca</button>&nbsp;<button class="ghost small" id="cb-blockday-btn">Blocca giornata intera</button>
+      <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0;">"Blocca giornata intera" usa solo la data: blocca tutti gli slot liberi di quel giorno secondo gli orari del calendario.</p></div>`:''}
     <div class="section"><div class="sh"><span class="st">Elenco</span>
       <button class="small" id="cb-view-giorni">Per giorno</button>&nbsp;<button class="small" id="cb-view-elenco">Elenco completo</button></div>
       <div id="cb-list"><div class="spinner">Caricamento…</div></div></div>`;
   el('cb-back').addEventListener('click', backFn);
   el('cb-x').addEventListener('click', backFn);
   if(canWrite) el('cb-block-btn').addEventListener('click', ()=>blockSlot(cal.id, canWrite));
+  if(canWrite) el('cb-blockday-btn').addEventListener('click', ()=>blockDay(cal, canWrite));
   CB_OPEN_DAYS=new Set();
   el('cb-view-giorni').addEventListener('click', ()=>{ CB_VIEW='giorni'; renderCalendarBookingsList(cal.id, canWrite); });
   el('cb-view-elenco').addEventListener('click', ()=>{ CB_VIEW='elenco'; renderCalendarBookingsList(cal.id, canWrite); });
@@ -1304,6 +1306,37 @@ async function blockSlot(calendarId, canWrite){
   if(error){ alert(error.code==='23505'?'Esiste già uno slot bloccato o prenotato a quell\'ora.':'Errore: '+error.message); return; }
   el('cb-block-date').value=''; el('cb-block-time').value='';
   loadCalendarBookingsList(calendarId,canWrite);
+}
+// Blocca tutti gli slot di un giorno: li genera dagli orari del calendario
+// con la stessa regola della pagina pubblica (generateSlots in
+// slot_booking.html: da ogni inizio fascia, passo duration_min, finché lo
+// slot sta dentro la fascia) e inserisce una riga blocked per ciascuno.
+// Gli slot che hanno già una riga (prenotati o già bloccati) si saltano:
+// le prenotazioni esistenti restano valide.
+async function blockDay(cal, canWrite){
+  const d=el('cb-block-date').value;
+  if(!d){ alert('Inserisci la data da bloccare.'); return; }
+  const dayNum=new Date(d+'T12:00:00').getDay()||7;
+  const sched=(cal.schedules||[]).find(s=>s.day===dayNum);
+  if(!sched||!(sched.ranges||[]).length){ alert('Il calendario non ha orari in quel giorno della settimana: non c\'è nulla da bloccare.'); return; }
+  const orari=[];
+  for(const r of sched.ranges){
+    const [sh,sm]=r.start.split(':').map(Number), [eh,em]=r.end.split(':').map(Number);
+    for(let m=sh*60+sm; m+cal.duration_min<=eh*60+em; m+=cal.duration_min)
+      orari.push(String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'));
+  }
+  const {data:esistenti,error:eErr}=await sb.from('booking_slots').select('ora,booked').eq('calendar_id',cal.id).eq('data',d);
+  if(eErr){ alert('Errore: '+eErr.message); return; }
+  const occupati=new Set((esistenti||[]).map(s=>String(s.ora).slice(0,5)));
+  const nPrenotati=(esistenti||[]).filter(s=>s.booked).length;
+  const daBloccare=orari.filter(o=>!occupati.has(o));
+  if(!daBloccare.length){ alert('Nessuno slot libero da bloccare in quella data.'); return; }
+  if(!confirm(`Bloccare ${daBloccare.length} slot il ${fmtDate(d)}?`+(nPrenotati?`\n\nAttenzione: ci sono già ${nPrenotati} prenotazioni in quel giorno, che restano valide. Se vanno annullate, cancellale dall'elenco.`:''))) return;
+  const {error}=await sb.from('booking_slots').insert(daBloccare.map(o=>({calendar_id:cal.id,data:d,ora:o,blocked:true,booked:false})));
+  if(error){ alert(error.code==='23505'?'Uno degli slot è stato occupato nel frattempo: riprova.':'Errore: '+error.message); return; }
+  el('cb-block-date').value=''; el('cb-block-time').value='';
+  CB_OPEN_DAYS.add(d);
+  loadCalendarBookingsList(cal.id,canWrite);
 }
 
 // ---- tab "Liberi Professionisti": un solo calendario condiviso, company_id null ----
