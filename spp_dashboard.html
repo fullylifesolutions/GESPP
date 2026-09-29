@@ -651,6 +651,26 @@ async function delCompany(id,nome){
 }
 
 // ---------- SCHEDA AZIENDA ----------
+// Sezioni a schede: tutte restano nel DOM (i loader scrivono nei loro box
+// come prima), si mostra solo quella attiva. Ogni loader aggiorna il
+// conteggio della propria scheda con setCompanyTabCount.
+const COMPANY_TABS=[['persone','Persone'],['sedi','Sedi'],['referenti','Referenti'],['team','Team'],['calendari','Calendari']];
+let COMPANY_TAB='persone', COMPANY_TAB_FOR=null, PERS_SEARCH='';
+function showCompanyTab(k){
+  COMPANY_TAB=k;
+  document.querySelectorAll('#ctabs [data-ctab]').forEach(b=>{ b.className=(b.dataset.ctab===k?'primary':'ghost')+' small'; });
+  document.querySelectorAll('[data-csec]').forEach(s=>{ s.style.display = s.dataset.csec===k ? '' : 'none'; });
+}
+function setCompanyTabCount(k,n){ const s=el('ctab-n-'+k); if(s) s.textContent=n; }
+function applyPersSearch(){
+  const box=el('persons-list'); if(!box) return;
+  const q=PERS_SEARCH.trim().toLowerCase();
+  let visibili=0;
+  box.querySelectorAll('.sub-item[data-q]').forEach(it=>{ const ok=!q||it.dataset.q.includes(q); it.style.display=ok?'':'none'; if(ok) visibili++; });
+  let vuoto=el('pers-search-empty');
+  if(q && !visibili){ if(!vuoto) box.insertAdjacentHTML('afterbegin','<div class="empty" id="pers-search-empty" style="padding:14px;">Nessuna persona corrisponde alla ricerca.</div>'); }
+  else if(vuoto) vuoto.remove();
+}
 async function enterCompany(id){
   CURRENT_COMPANY=id;
   const {data:c}=await sb.from('companies').select('ragione_sociale,partita_iva,settore').eq('id',id).single();
@@ -662,11 +682,22 @@ async function enterCompany(id){
     <button class="back-btn" id="back-btn-top">← Aziende</button>
     <div class="row-head"><div style="flex:1;"><h2 class="panel-title">${escapeHtml(c?c.ragione_sociale:'Azienda')}</h2>
     <p class="panel-sub">${[c&&c.partita_iva?'P.IVA '+escapeHtml(c.partita_iva):'',escapeHtml(c&&c.settore||'')].filter(Boolean).join(' · ')||'Dati azienda'}</p></div></div>
-    <div class="section"><div class="sh"><span class="st">Persone</span>${canWrite?'<button class="primary small" id="add-person">+ Persona</button>':''}</div><div id="persons-list"><div class="spinner">Caricamento…</div></div></div>
-    <div class="section"><div class="sh"><span class="st">Sedi</span>${canWrite?'<button class="primary small" id="add-site">+ Sede</button>':''}</div><div id="sites-list"><div class="spinner">Caricamento…</div></div></div>
-    <div class="section"><div class="sh"><span class="st">Referenti</span>${canWrite?'<button class="primary small" id="add-contact">+ Referente</button>':''}</div><div id="contacts-list"><div class="spinner">Caricamento…</div></div></div>
-    <div class="section"><div class="sh"><span class="st">Team</span>${isAdmin?'<button class="primary small" id="add-team">+ Nuovo team</button>':''}</div><div id="company-team-list"><div class="spinner">Caricamento…</div></div></div>
-    <div class="section"><div class="sh"><span class="st">Calendario prenotazioni</span></div><div id="calendar-box"><div class="spinner">Caricamento…</div></div></div>`;
+    <div id="ctabs" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+      ${COMPANY_TABS.map(([k,lab])=>`<button class="small" data-ctab="${k}">${lab} <span id="ctab-n-${k}" style="opacity:.7;"></span></button>`).join('')}</div>
+    <div class="section" data-csec="persone"><div class="sh"><span class="st">Persone</span>${canWrite?'<button class="primary small" id="add-person">+ Persona</button>':''}</div>
+      <input type="search" id="pers-search" placeholder="Cerca per nome, cognome o reparto…" style="margin-bottom:8px;">
+      <div id="persons-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section" data-csec="sedi"><div class="sh"><span class="st">Sedi</span>${canWrite?'<button class="primary small" id="add-site">+ Sede</button>':''}</div><div id="sites-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section" data-csec="referenti"><div class="sh"><span class="st">Referenti</span>${canWrite?'<button class="primary small" id="add-contact">+ Referente</button>':''}</div><div id="contacts-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section" data-csec="team"><div class="sh"><span class="st">Team</span>${isAdmin?'<button class="primary small" id="add-team">+ Nuovo team</button>':''}</div><div id="company-team-list"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section" data-csec="calendari"><div class="sh"><span class="st">Calendari prenotazioni</span></div><div id="calendar-box"><div class="spinner">Caricamento…</div></div></div>`;
+  // scheda attiva e ricerca restano tali tornando nella STESSA azienda
+  // (es. da una persona o da un team); un'altra azienda riparte da Persone.
+  if(COMPANY_TAB_FOR!==id){ COMPANY_TAB_FOR=id; COMPANY_TAB='persone'; PERS_SEARCH=''; }
+  document.querySelectorAll('#ctabs [data-ctab]').forEach(b=>b.addEventListener('click',()=>showCompanyTab(b.dataset.ctab)));
+  showCompanyTab(COMPANY_TAB);
+  el('pers-search').value=PERS_SEARCH;
+  el('pers-search').addEventListener('input',e=>{ PERS_SEARCH=e.target.value; applyPersSearch(); });
   el('back-btn-top').addEventListener('click',()=>goTab('aziende'));
   if(canWrite){
     el('add-person').addEventListener('click',()=>openPersonModal(null,'dipendente'));
@@ -683,6 +714,7 @@ async function loadCompanyTeams(companyId, companyName){
   const box=el('company-team-list');
   const categories=await loadTeamCategories();
   const teams=categories.filter(c=>c.n_aziende===1 && c.company_id===companyId);
+  setCompanyTabCount('team', teams.length);
   if(!teams.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun team interno a questa azienda.</div>`; return; }
   box.innerHTML=teams.map(t=>`<div class="sub-item" style="cursor:pointer;" data-id="${t.team_id}"><div class="li-ic">👥</div>
     <div class="m"><div>${escapeHtml(t.nome)}</div></div><span class="li-arrow">›</span></div>`).join('');
@@ -694,11 +726,12 @@ async function loadPersons(companyId,canWrite){
   const box=el('persons-list');
   const {data,error}=await sb.from('persons').select('id,nome,cognome,reparto,ruolo_aziendale,site_id,archiviata').eq('company_id',companyId).order('archiviata').order('nome').order('cognome');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  setCompanyTabCount('persone', data.filter(p=>!p.archiviata).length);
   if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna persona inserita.</div>`; return; }
   const visibili = SHOW_ARCH_PERS ? data : data.filter(p=>!p.archiviata);
   if(!visibili.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna persona attiva. ${data.some(p=>p.archiviata)?'<a id="show-arch" style="color:var(--accent);cursor:pointer;">Mostra archiviate</a>':''}</div>`;
     if(el('show-arch')) el('show-arch').addEventListener('click',()=>{SHOW_ARCH_PERS=true;loadPersons(companyId,canWrite);}); return; }
-  box.innerHTML=visibili.map(p=>`<div class="sub-item" style="cursor:pointer;${p.archiviata?'opacity:.55;':''}" data-id="${p.id}">
+  box.innerHTML=visibili.map(p=>`<div class="sub-item" style="cursor:pointer;${p.archiviata?'opacity:.55;':''}" data-id="${p.id}" data-q="${escapeHtml([p.nome,p.cognome,p.reparto,p.ruolo_aziendale].filter(Boolean).join(' ').toLowerCase())}">
     <div class="li-av">${initials(p.nome,p.cognome)}</div>
     <div class="m"><div>${escapeHtml(p.nome+' '+p.cognome)} ${p.archiviata?'<span style="font-size:11px;color:var(--ink-soft);">(archiviata)</span>':''}</div>
     <div class="d">${[escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||'')].filter(Boolean).join(' · ')||'—'}</div></div>
@@ -713,6 +746,7 @@ async function loadPersons(companyId,canWrite){
   }
   if(el('show-arch')) el('show-arch').addEventListener('click',()=>{SHOW_ARCH_PERS=true;loadPersons(companyId,canWrite);});
   if(el('hide-arch')) el('hide-arch').addEventListener('click',()=>{SHOW_ARCH_PERS=false;loadPersons(companyId,canWrite);});
+  applyPersSearch();
 }
 let SHOW_ARCH_PERS=false;
 async function archivePerson(id, isArchived, nome, reload){
@@ -1065,6 +1099,7 @@ async function loadSites(companyId,canWrite){
   const box=el('sites-list');
   const {data,error}=await sb.from('company_sites').select('id,nome_sede,indirizzo,citta,cap,provincia,principale').eq('company_id',companyId).order('principale',{ascending:false}).order('nome_sede');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  setCompanyTabCount('sedi', data.length);
   if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna sede inserita.</div>`; return; }
   box.innerHTML=data.map(s=>`<div class="sub-item"><div class="m"><div>${escapeHtml(s.nome_sede)} ${s.principale?'<span class="tag-main">principale</span>':''}</div>
     <div class="d">${[escapeHtml(s.indirizzo||''),escapeHtml(s.citta||''),escapeHtml(s.cap||''),escapeHtml(s.provincia||'')].filter(Boolean).join(', ')||'—'}</div></div>
@@ -1078,6 +1113,7 @@ async function loadContacts(companyId,canWrite){
   const box=el('contacts-list');
   const {data,error}=await sb.from('company_contacts').select('id,nome,cognome,ruolo,email,telefono').eq('company_id',companyId).order('cognome');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  setCompanyTabCount('referenti', data.length);
   if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun referente inserito.</div>`; return; }
   box.innerHTML=data.map(c=>`<div class="sub-item"><div class="m"><div>${escapeHtml(c.nome+' '+c.cognome)} ${c.ruolo?'<span style="color:var(--ink-soft);font-size:12px;">· '+escapeHtml(c.ruolo)+'</span>':''}</div>
     <div class="d">${[escapeHtml(c.email||''),escapeHtml(c.telefono||'')].filter(Boolean).join(' · ')||'—'}</div></div>
@@ -1112,6 +1148,7 @@ async function loadCalendarBox(companyId, canWrite, nome, boxId, backFn){
   const {data:cals,error}=await calQuery(companyId).order('nome');
   const reload=()=>loadCalendarBox(companyId,canWrite,nome,boxId,backFn);
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  if(companyId) setCompanyTabCount('calendari', cals.length);
   const puoCreare = canWrite && (companyId || !cals.length);
   box.innerHTML = (cals.length
       ? cals.map(cal=>renderCalendarSummary(cal, canWrite)).join('')
