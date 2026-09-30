@@ -1031,7 +1031,7 @@ async function openCompanyModal(id){
 }
 async function loadAssignBox(companyId){
   const box=el('assign-list');
-  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('cognome');
+  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('nome').order('cognome');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   if(!users.length){ box.innerHTML=`<div style="font-size:13px;color:var(--ink-soft);">Nessun consulente disponibile.</div>`; return; }
   let assigned=new Set();
@@ -1111,7 +1111,7 @@ async function loadSites(companyId,canWrite){
 }
 async function loadContacts(companyId,canWrite){
   const box=el('contacts-list');
-  const {data,error}=await sb.from('company_contacts').select('id,nome,cognome,ruolo,email,telefono').eq('company_id',companyId).order('cognome');
+  const {data,error}=await sb.from('company_contacts').select('id,nome,cognome,ruolo,email,telefono').eq('company_id',companyId).order('nome').order('cognome');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   setCompanyTabCount('referenti', data.length);
   if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun referente inserito.</div>`; return; }
@@ -1418,7 +1418,7 @@ async function openProfAssign(personId){
   PASSIGN_PERSON=personId; el('pa-msg').className='msg';
   const box=el('pa-list');
   el('modal-passign').classList.add('open');
-  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('cognome');
+  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('nome').order('cognome');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   if(!users.length){ box.innerHTML=`<div style="font-size:13px;color:var(--ink-soft);">Nessun consulente disponibile.</div>`; return; }
   let assigned=new Set();
@@ -1908,7 +1908,7 @@ async function loadTeamMembers(teamId,canWrite){
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   // team_members_light() non garantisce un ordine (nessun ORDER BY nella
   // funzione) — ordina qui, come tutti gli altri elenchi persone del gestionale.
-  (data||[]).sort((a,b)=>(a.cognome+a.nome).localeCompare(b.cognome+b.nome,'it'));
+  (data||[]).sort((a,b)=>(a.nome+' '+a.cognome).localeCompare(b.nome+' '+b.cognome,'it'));
   TEAM_MEMBERS_CACHE=data||[];
   if(!data||!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun membro nel team.</div>`; return; }
   // team_members_light bypassa la RLS di persons: un membro di un'azienda
@@ -1956,7 +1956,7 @@ async function searchTeamMembers(){
   const q=el('tm-search').value.trim();
   const box=el('tm-results');
   if(!q && !TEAM_MEMBER_FILTER_COMPANY){ box.innerHTML=''; return; }
-  let query=sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)').eq('archiviata',false).order('cognome').limit(20);
+  let query=sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)').eq('archiviata',false).order('nome').order('cognome').limit(20);
   if(q) query=query.or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`);
   if(TEAM_MEMBER_FILTER_COMPANY) query=query.eq('company_id',TEAM_MEMBER_FILTER_COMPANY);
   const {data,error}=await query;
@@ -1981,7 +1981,7 @@ async function openTeamAssignModal(teamId){
   TEAM_ASSIGN_ID=teamId; el('ta-msg').className='msg';
   const box=el('ta-list');
   el('modal-team-assign').classList.add('open');
-  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('cognome');
+  const {data:users,error}=await sb.from('app_users').select('id,nome,cognome,ruolo,attivo').in('ruolo',['consulente','consulente_limitato']).eq('attivo',true).order('nome').order('cognome');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   if(!users.length){ box.innerHTML=`<div style="font-size:13px;color:var(--ink-soft);">Nessun consulente disponibile.</div>`; return; }
   let assigned=new Set();
@@ -2207,6 +2207,7 @@ async function runDetail(f){
   });
   if(error){ box.innerHTML=`<div class="section"><div class="empty">Errore: ${error.message}</div></div>`; return; }
   if(!data||!data.length){ box.innerHTML=`<div class="section"><div class="empty" style="padding:14px;">Nessuna persona con questi filtri.</div></div>`; return; }
+  data.sort((a,b)=>(a.persona||'').localeCompare(b.persona||'','it')); // la RPC non ordina; persona = "nome cognome"
   box.innerHTML=`<div class="section">
     <div class="sh"><span class="st">Dettaglio nominativo</span><span style="font-size:11px;padding:3px 9px;border-radius:12px;background:#f7e9e8;color:var(--danger);margin-left:8px;">accesso registrato</span></div>
     ${data.map(d=>`<div class="sub-item"><div class="m"><div>${escapeHtml(d.persona)} ${d.azienda?'<span style="color:var(--ink-soft);font-size:12px;">· '+escapeHtml(d.azienda)+'</span>':''}</div>
@@ -2441,7 +2442,7 @@ async function wcViewMyTasks(){
 }
 async function wcInit(){
   if(!wcAllUsers.length){
-    const {data}=await sb.from('app_users').select('id,nome,cognome').eq('attivo',true).order('cognome');
+    const {data}=await sb.from('app_users').select('id,nome,cognome').eq('attivo',true).order('nome').order('cognome');
     wcAllUsers=data||[];
   }
   await wcLoadAll();
