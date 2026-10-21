@@ -246,6 +246,17 @@
   <div class="modal-actions"><button class="ghost" id="mr-cancel">Annulla</button><button class="primary" id="mr-save">Salva</button></div>
 </div></div>
 
+<!-- MODAL NOTA AZIENDA -->
+<!-- z-index sopra gli altri modal: si apre anche sopra un incontro aperto -->
+<div class="modal-bg" id="modal-cnote" style="z-index:20;"><div class="modal">
+  <h3 id="cn-title">Nuova nota</h3><div id="cn-msg" class="msg"></div>
+  <div id="cn-company-box" style="display:none;"><label>Azienda *</label><select id="cn-company"></select></div>
+  <label>Titolo *</label><input type="text" id="cn-titolo" placeholder="es. Riorganizzazione reparto vendite">
+  <label>Nota</label><textarea id="cn-corpo" rows="8"></textarea>
+  <p style="font-size:11px;color:var(--ink-soft);margin:0 0 12px;">Osservazioni a livello organizzativo. Non inserire dati sanitari di singole persone. Data e autore sono registrati automaticamente.</p>
+  <div class="modal-actions"><button class="ghost" id="cn-cancel">Annulla</button><button class="primary" id="cn-save">Salva</button></div>
+</div></div>
+
 <!-- MODAL PERSONA -->
 <div class="modal-bg" id="modal-person"><div class="modal">
   <h3 id="mp-title">Nuova persona</h3><div id="mp-msg" class="msg"></div>
@@ -347,7 +358,7 @@
   <label>Sintesi</label>
   <textarea id="m-sintesi" rows="3" placeholder="Temi affrontati e azioni…"></textarea>
   <p style="font-size:11px;color:var(--ink-soft);margin:0 0 12px;">Annotare temi e azioni, non trascrizioni testuali dei colloqui.</p>
-  <div class="modal-actions"><button class="ghost" id="mm-cancel">Annulla</button><button class="primary" id="mm-save">Salva</button></div>
+  <div class="modal-actions"><button class="ghost" id="mm-cnote" style="margin-right:auto;">+ Nota azienda</button><button class="ghost" id="mm-cancel">Annulla</button><button class="primary" id="mm-save">Salva</button></div>
 </div></div>
 
 <!-- MODAL TEAM (solo admin: creazione/modifica nome/descrizione/stato) -->
@@ -387,7 +398,7 @@
   </div>
   <label>Sintesi</label>
   <textarea id="tm-sintesi" rows="3" placeholder="Temi affrontati, attività svolte…"></textarea>
-  <div class="modal-actions"><button class="ghost" id="tmm-cancel">Annulla</button><button class="primary" id="tmm-save">Salva</button></div>
+  <div class="modal-actions"><button class="ghost" id="tmm-cnote" style="margin-right:auto;">+ Nota azienda</button><button class="ghost" id="tmm-cancel">Annulla</button><button class="primary" id="tmm-save">Salva</button></div>
 </div></div>
 
 <!-- MODAL SELF-REPORT -->
@@ -654,7 +665,7 @@ async function delCompany(id,nome){
 // Sezioni a schede: tutte restano nel DOM (i loader scrivono nei loro box
 // come prima), si mostra solo quella attiva. Ogni loader aggiorna il
 // conteggio della propria scheda con setCompanyTabCount.
-const COMPANY_TABS=[['persone','Persone'],['sedi','Sedi'],['referenti','Referenti'],['team','Team'],['calendari','Calendari']];
+const COMPANY_TABS=[['persone','Persone'],['sedi','Sedi'],['referenti','Referenti'],['team','Team'],['calendari','Calendari'],['note','Note']];
 let COMPANY_TAB='persone', COMPANY_TAB_FOR=null, PERS_SEARCH='';
 function showCompanyTab(k){
   COMPANY_TAB=k;
@@ -690,7 +701,8 @@ async function enterCompany(id){
     <div class="section" data-csec="sedi"><div class="sh"><span class="st">Sedi</span>${canWrite?'<button class="primary small" id="add-site">+ Sede</button>':''}</div><div id="sites-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section" data-csec="referenti"><div class="sh"><span class="st">Referenti</span>${canWrite?'<button class="primary small" id="add-contact">+ Referente</button>':''}</div><div id="contacts-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section" data-csec="team"><div class="sh"><span class="st">Team</span>${isAdmin?'<button class="primary small" id="add-team">+ Nuovo team</button>':''}</div><div id="company-team-list"><div class="spinner">Caricamento…</div></div></div>
-    <div class="section" data-csec="calendari"><div class="sh"><span class="st">Calendari prenotazioni</span></div><div id="calendar-box"><div class="spinner">Caricamento…</div></div></div>`;
+    <div class="section" data-csec="calendari"><div class="sh"><span class="st">Calendari prenotazioni</span></div><div id="calendar-box"><div class="spinner">Caricamento…</div></div></div>
+    <div class="section" data-csec="note"><div class="sh"><span class="st">Note sull'azienda</span>${canWrite?'<button class="primary small" id="add-cnote">+ Nota</button>':''}</div><div id="cnotes-list"><div class="spinner">Caricamento…</div></div></div>`;
   // scheda attiva e ricerca restano tali tornando nella STESSA azienda
   // (es. da una persona o da un team); un'altra azienda riparte da Persone.
   if(COMPANY_TAB_FOR!==id){ COMPANY_TAB_FOR=id; COMPANY_TAB='persone'; PERS_SEARCH=''; }
@@ -703,9 +715,10 @@ async function enterCompany(id){
     el('add-person').addEventListener('click',()=>openPersonModal(null,'dipendente'));
     el('add-site').addEventListener('click',()=>openSiteModal(null));
     el('add-contact').addEventListener('click',()=>openContactModal(null));
+    el('add-cnote').addEventListener('click',()=>openCompanyNoteModal(null));
   }
   if(isAdmin) el('add-team').addEventListener('click',()=>{ TEAM_CREATE_COMPANY={id, nome:c?c.ragione_sociale:''}; openTeamModal(null); });
-  loadPersons(id,canWrite); loadSites(id,canWrite); loadContacts(id,canWrite); loadCompanyTeams(id, c?c.ragione_sociale:'Azienda');
+  loadPersons(id,canWrite); loadSites(id,canWrite); loadContacts(id,canWrite); loadCompanyTeams(id, c?c.ragione_sociale:'Azienda'); loadCompanyNotes(id,canWrite);
   loadCalendarBox(id, canWrite, c?c.ragione_sociale:'Azienda', 'calendar-box', ()=>enterCompany(id));
 }
 
@@ -1133,6 +1146,90 @@ async function loadContacts(companyId,canWrite){
     box.querySelectorAll('.contact-edit').forEach(b=>b.addEventListener('click',()=>openContactModal(b.dataset.id)));
     box.querySelectorAll('.contact-del').forEach(b=>b.addEventListener('click',()=>delContact(b.dataset.id,b.dataset.nome)));
   }
+}
+
+// ---------- NOTE AZIENDA (company_notes) ----------
+// Condivise tra i consulenti dell'azienda; modifica/eliminazione solo
+// all'autore o all'admin (lo decide la RLS, i bottoni la rispecchiano).
+// Autore e date li timbra il DB (trigger company_notes_stamp).
+let CNOTES=[], EDIT_CNOTE=null, CNOTE_FROM_MEETING=false;
+async function loadCompanyNotes(companyId,canWrite){
+  const box=el('cnotes-list');
+  const {data,error}=await sb.from('company_notes').select('id,autore_id,autore_nome,titolo,corpo,created_at,updated_at').eq('company_id',companyId).order('created_at',{ascending:false});
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
+  CNOTES=data;
+  setCompanyTabCount('note', data.length);
+  if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna nota sull'azienda.</div>`; return; }
+  box.innerHTML=data.map(n=>{
+    const mia = canWrite && (ME.ruolo==='admin' || n.autore_id===ME.id);
+    return `<div class="sub-item" style="display:block;">
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        <div class="m" style="flex:1;"><div style="font-weight:600;">${escapeHtml(n.titolo)}</div>
+          <div class="d">${fmtDateTime(n.created_at)}${n.autore_nome?' · '+escapeHtml(n.autore_nome):''}${n.updated_at?' · modificata il '+fmtDateTime(n.updated_at):''}</div></div>
+        ${mia?'<button class="ghost small cnote-edit" data-id="'+n.id+'">Modifica</button> <button class="ghost small danger cnote-del" data-id="'+n.id+'">Elimina</button>':''}
+      </div>
+      ${n.corpo?`<div style="white-space:pre-wrap;font-size:13px;margin-top:6px;">${escapeHtml(n.corpo)}</div>`:''}
+    </div>`; }).join('');
+  box.querySelectorAll('.cnote-edit').forEach(b=>b.addEventListener('click',()=>openCompanyNoteModal(b.dataset.id)));
+  box.querySelectorAll('.cnote-del').forEach(b=>b.addEventListener('click',()=>delCompanyNote(b.dataset.id)));
+}
+// companies: solo dall'incontro, [{id,ragione_sociale}] tra cui scegliere
+// l'azienda della nota; senza, la nota va su CURRENT_COMPANY (scheda azienda).
+function openCompanyNoteModal(id, companies){
+  EDIT_CNOTE=id; el('cn-msg').className='msg';
+  CNOTE_FROM_MEETING=!!companies;
+  el('cn-company-box').style.display=companies?'':'none';
+  if(companies){
+    el('cn-company').innerHTML=(companies.length>1?'<option value="">— seleziona —</option>':'')+
+      companies.map(c=>`<option value="${c.id}">${escapeHtml(c.ragione_sociale)}</option>`).join('');
+    el('cn-company').disabled=companies.length===1;
+  }
+  const n=id?CNOTES.find(x=>x.id===id):null;
+  el('cn-title').textContent=n?'Modifica nota':'Nuova nota azienda';
+  el('cn-titolo').value=n?n.titolo:''; el('cn-corpo').value=n?(n.corpo||''):'';
+  el('modal-cnote').classList.add('open');
+  el('cn-titolo').focus();
+}
+async function saveCompanyNote(){
+  const msg=el('cn-msg'); msg.className='msg';
+  const titolo=el('cn-titolo').value.trim();
+  if(!titolo){ msg.textContent='Il titolo è obbligatorio.'; msg.className='msg err'; return; }
+  const companyId=CNOTE_FROM_MEETING?el('cn-company').value:CURRENT_COMPANY;
+  if(!companyId){ msg.textContent='Seleziona l\'azienda.'; msg.className='msg err'; return; }
+  const payload={titolo, corpo:el('cn-corpo').value.trim()||null};
+  const btn=el('cn-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  // .select() per accorgersi di un update negato dalla RLS (non dà errore, tocca 0 righe)
+  const {data,error} = EDIT_CNOTE
+    ? await sb.from('company_notes').update(payload).eq('id',EDIT_CNOTE).select('id')
+    : await sb.from('company_notes').insert({...payload, company_id:companyId}).select('id');
+  btn.disabled=false; btn.textContent='Salva';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(!data||!data.length){ msg.textContent='Non hai i permessi per modificare questa nota.'; msg.className='msg err'; return; }
+  el('modal-cnote').classList.remove('open'); EDIT_CNOTE=null;
+  // dall'incontro non c'è nessun elenco note a schermo: l'incontro resta aperto sotto
+  if(!CNOTE_FROM_MEETING){ loadCompanyNotes(CURRENT_COMPANY, true); return; }
+  const mmsg=el('modal-team-meeting').classList.contains('open')?el('tmm-msg'):el('mm-msg');
+  mmsg.textContent='Nota azienda salvata.'; mmsg.className='msg ok';
+}
+// "+ Nota azienda" dentro un incontro (individuale o di team), senza
+// chiuderlo. companyIds: aziende candidate; restano solo quelle che la RLS
+// di companies lascia vedere — stessa gate dell'insert su company_notes,
+// quindi chi non è collegato a un'azienda non se la vede proporre.
+async function openCompanyNoteFromMeeting(companyIds){
+  const ids=[...new Set(companyIds.filter(Boolean))];
+  const {data}=ids.length
+    ? await sb.from('companies').select('id,ragione_sociale').in('id',ids).order('ragione_sociale')
+    : {data:[]};
+  if(!data||!data.length){ alert('Nessuna azienda a cui collegare la nota: la persona non è legata a un\'azienda, oppure non sei collegato alle aziende di questo team.'); return; }
+  openCompanyNoteModal(null, data);
+}
+async function delCompanyNote(id){
+  const n=CNOTES.find(x=>x.id===id);
+  if(!confirm('Eliminare la nota "'+(n?n.titolo:'')+'"?')) return;
+  const {data,error}=await sb.from('company_notes').delete().eq('id',id).select('id');
+  if(error){ alert('Errore: '+error.message); return; }
+  if(!data||!data.length){ alert('Non hai i permessi per eliminare questa nota.'); return; }
+  loadCompanyNotes(CURRENT_COMPANY, true);
 }
 
 // ---------- CALENDARIO PRENOTAZIONI ----------
@@ -2411,9 +2508,16 @@ el('tmm-cancel').addEventListener('click', ()=>{ el('modal-team-meeting').classL
 el('tmm-save').addEventListener('click', saveTeamMeeting);
 el('sr-cancel').addEventListener('click', ()=>{ el('modal-selfrep').classList.remove('open'); });
 el('sr-save').addEventListener('click', saveSelfRep);
+el('cn-cancel').addEventListener('click', ()=>{ el('modal-cnote').classList.remove('open'); EDIT_CNOTE=null; });
+el('cn-save').addEventListener('click', saveCompanyNote);
+el('mm-cnote').addEventListener('click', ()=>openCompanyNoteFromMeeting([CURRENT_PERSON_OBJ&&CURRENT_PERSON_OBJ.company_id]));
+el('tmm-cnote').addEventListener('click', async ()=>{
+  const {data}=await sb.rpc('team_members_light',{p_team_id:CURRENT_TEAM});
+  openCompanyNoteFromMeeting((data||[]).map(m=>m.company_id));
+});
 el('mcal-cancel').addEventListener('click', ()=>{ el('modal-calendar').classList.remove('open'); });
 el('mcal-save').addEventListener('click', saveCalendar);
-[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar'],['modal-cnote']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
 el('modal-team-member').addEventListener('click', e=>{ if(e.target===el('modal-team-member')) closeTeamMemberModal(); });
 
 // ══════════════════════════════════════════════════════════════════════════

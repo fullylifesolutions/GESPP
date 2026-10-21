@@ -504,5 +504,31 @@ alter table public.consultant_team  enable row level security;
 alter table public.team_meetings    enable row level security;
 
 -- ============================================================================
+-- NOTE AZIENDA — osservazioni del consulente a livello organizzativo
+-- (scheda "Note" nella pagina azienda). NON dato sanitario: nessun legame con
+-- persons né con le tabelle sanitarie. Condivise tra i consulenti collegati
+-- all'azienda (stessa gate di company_sites/company_contacts); modifica ed
+-- eliminazione solo all'autore o all'admin. Policy/trigger nel file 2.
+--
+-- autore_id/autore_nome/created_at/updated_at li scrive il trigger
+-- company_notes_stamp (file 2), mai il frontend: autore_nome è copiato alla
+-- creazione perché la RLS di app_users non lascia leggere ai consulenti i
+-- nomi dei colleghi.
+-- ----------------------------------------------------------------------------
+create table if not exists public.company_notes (
+    id          uuid primary key default gen_random_uuid(),
+    company_id  uuid not null references public.companies(id) on delete cascade,
+    autore_id   uuid references public.app_users(id) on delete set null,
+    autore_nome text,
+    titolo      text not null,
+    corpo       text,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz
+);
+create index if not exists idx_company_notes_company on public.company_notes(company_id);
+
+alter table public.company_notes enable row level security;
+
+-- ============================================================================
 --  FINE FILE 1. Procedere con gespp_2_funzioni_policy.sql
 -- ============================================================================

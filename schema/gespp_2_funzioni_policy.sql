@@ -788,5 +788,65 @@ grant select, insert, update, delete on
     to authenticated;
 
 -- ============================================================================
+--  NOTE AZIENDA (company_notes, tabella nel file 1)
+-- ============================================================================
+-- Timbro autore/date lato DB: il frontend manda solo company_id/titolo/corpo.
+-- In update autore, azienda e data di creazione restano quelli originali.
+-- security definer + row_security off: serve a leggere nome/cognome
+-- dell'autore da app_users (la cui RLS mostra solo il proprio record, che
+-- comunque è l'unico letto qui: id = auth.uid()).
+create or replace function public.company_notes_stamp()
+returns trigger language plpgsql security definer set search_path = public set row_security = off
+as $$
+begin
+    if TG_OP = 'INSERT' then
+        NEW.autore_id   := auth.uid();
+        NEW.autore_nome := (select trim(coalesce(nome,'')||' '||coalesce(cognome,'')) from public.app_users where id = auth.uid());
+        NEW.created_at  := now();
+        NEW.updated_at  := null;
+    else
+        NEW.autore_id   := OLD.autore_id;
+        NEW.autore_nome := OLD.autore_nome;
+        NEW.company_id  := OLD.company_id;
+        NEW.created_at  := OLD.created_at;
+        NEW.updated_at  := now();
+    end if;
+    return NEW;
+end; $$;
+
+drop trigger if exists trg_company_notes_stamp on public.company_notes;
+create trigger trg_company_notes_stamp before insert or update on public.company_notes
+    for each row execute function public.company_notes_stamp();
+
+-- Audit FULL come team_meetings: dato organizzativo, non sanitario.
+drop trigger if exists trg_audit_company_notes on public.company_notes;
+create trigger trg_audit_company_notes after insert or update or delete on public.company_notes
+    for each row execute function public.fn_audit_write('full');
+
+-- Lettura: stessa gate di company_sites/company_contacts (admin o consulente
+-- collegato via consultant_company). Scrittura: can_write() (esclude
+-- consulente_limitato); modifica/eliminazione solo autore o admin.
+drop policy if exists company_notes_read on public.company_notes;
+create policy company_notes_read on public.company_notes
+    for select using ( public.is_admin() or exists (
+        select 1 from public.consultant_company cc where cc.company_id = company_notes.company_id and cc.consultant_id = auth.uid()) );
+drop policy if exists company_notes_insert on public.company_notes;
+create policy company_notes_insert on public.company_notes
+    for insert with check ( public.can_write() and ( public.is_admin() or exists (
+        select 1 from public.consultant_company cc where cc.company_id = company_notes.company_id and cc.consultant_id = auth.uid()) ) );
+drop policy if exists company_notes_update on public.company_notes;
+create policy company_notes_update on public.company_notes
+    for update using ( public.can_write() and ( public.is_admin() or (autore_id = auth.uid() and exists (
+        select 1 from public.consultant_company cc where cc.company_id = company_notes.company_id and cc.consultant_id = auth.uid())) ) )
+    with check ( public.can_write() and ( public.is_admin() or autore_id = auth.uid() ) );
+drop policy if exists company_notes_delete on public.company_notes;
+create policy company_notes_delete on public.company_notes
+    for delete using ( public.can_write() and ( public.is_admin() or (autore_id = auth.uid() and exists (
+        select 1 from public.consultant_company cc where cc.company_id = company_notes.company_id and cc.consultant_id = auth.uid())) ) );
+
+-- Grant espliciti (da 2026-10-30 Supabase non li concede più in automatico).
+grant select, insert, update, delete on public.company_notes to authenticated;
+
+-- ============================================================================
 --  FINE FILE 2. Procedere con gespp_3_dati_iniziali.sql
 -- ============================================================================
