@@ -1880,7 +1880,7 @@ async function saveTeamModal(){
   btn.disabled=false; btn.textContent='Salva';
   if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
   el('modal-team').classList.remove('open');
-  const wasEdit=!!EDIT_TEAM; EDIT_TEAM=null;
+  const editedId=EDIT_TEAM, wasEdit=!!EDIT_TEAM; EDIT_TEAM=null;
   TEAM_CATEGORIES_CACHE=null; // esistenza/composizione dei team e' cambiata
   const fromCompany=TEAM_CREATE_COMPANY; TEAM_CREATE_COMPANY=null;
   // Scorciatoia creazione da azienda: appena creato, si passa subito ad
@@ -1889,6 +1889,9 @@ async function saveTeamModal(){
   if(!wasEdit && newId && fromCompany){
     TEAM_MEMBERS_CACHE=[]; // team appena creato: nessun membro puo' gia' esserci
     openTeamMemberModal(newId, fromCompany.id, ()=>enterCompany(fromCompany.id));
+  } else if(wasEdit && editedId===CURRENT_TEAM){
+    // modificato dalla pagina del team: si resta lì (con la stessa provenienza)
+    enterTeam(editedId, CURRENT_TEAM_DA_AZIENDA);
   } else {
     viewTeams();
   }
@@ -1920,11 +1923,14 @@ async function enterTeam(id, daAzienda){
     <button class="back-btn" id="back-btn-top">${az?'← '+escapeHtml(az.nome):'← Team'}</button>
     <div class="row-head"><div style="flex:1;"><h2 class="panel-title">${escapeHtml(t?t.nome:'Team')}${t&&!t.attivo?' <span style="font-size:12px;color:var(--ink-soft);">(non attivo)</span>':''}</h2>
     <p class="panel-sub">${escapeHtml(t&&t.descrizione||'')||'Percorso di gruppo'}</p></div>
-    ${isAdmin?'<button class="ghost small" id="team-assign-btn">Consulenti</button>':''}</div>
+    ${isAdmin?'<button class="ghost small" id="team-edit-btn">Modifica</button> <button class="ghost small" id="team-assign-btn">Consulenti</button>':''}</div>
     <div class="section"><div class="sh"><span class="st">Membri</span>${canWrite?'<button class="primary small" id="add-member">+ Aggiungi membro</button>':''}</div><div id="team-members-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Incontri di gruppo</span>${canWrite?'<button class="primary small" id="add-team-meeting">+ Incontro</button>':''}</div><div id="team-meetings-list"><div class="spinner">Caricamento…</div></div></div>`;
   el('back-btn-top').addEventListener('click',()=>{ if(az) enterCompany(az.id); else goTab('team'); });
   if(isAdmin) el('team-assign-btn').addEventListener('click',()=>openTeamAssignModal(id));
+  // i team interni stanno solo nella scheda azienda, dove non c'è il Modifica
+  // dell'elenco globale: si modificano da qui
+  if(isAdmin) el('team-edit-btn').addEventListener('click',()=>openTeamModal(id));
   if(canWrite){
     // Team già "interno" a un'azienda (n_aziende=1): propone direttamente
     // le persone di quella azienda invece di richiedere una ricerca manuale
