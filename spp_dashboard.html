@@ -913,7 +913,7 @@ async function loadPersonBookings(p){
     return via ? {...s, via} : null;
   }).filter(Boolean);
   if(!mie.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessuna prenotazione trovata${email?'':' (la scheda non ha email: abbinamento solo per nome e cognome)'}.</div>`; return; }
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   const future=mie.filter(s=>s.data>=today), passate=mie.filter(s=>s.data<today).reverse();
   const riga=s=>`<div class="sub-item"><div class="m">
     <div>📅 ${GIORNI_IT[new Date(s.data+'T12:00:00').getDay()]} ${fmtDate(s.data)} · ${String(s.ora).slice(0,5)}</div>
@@ -957,7 +957,7 @@ function openSppModal(){
   el('msp-msg').className='msg';
   el('msp-title').textContent='Nuova rilevazione SPP';
   const last = SPP_ROWS.length ? SPP_ROWS[0] : null;
-  el('spp-data').value = new Date().toISOString().slice(0,10);
+  el('spp-data').value = localToday();
   el('spp-a1').value = last?last.asse1_sessualita||'':'';
   el('spp-a2').value = last?last.asse2_lateralita||'':'';
   el('spp-a3').value = last?last.asse3_bisogni||'':'';
@@ -1412,7 +1412,7 @@ let CB_VIEW='giorni', CB_OPEN_DAYS=new Set(), CB_DATA=[];
 const GIORNI_IT=['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
 async function loadCalendarBookingsList(calendarId, canWrite){
   const list=el('cb-list');
-  const today=new Date().toISOString().slice(0,10);
+  const today=localToday();
   const {data,error}=await sb.from('booking_slots')
     .select('id,data,ora,booked,blocked,booker_nome,booker_cognome,booker_email,note')
     .eq('calendar_id',calendarId).gte('data',today).order('data').order('ora');
@@ -1682,7 +1682,7 @@ let SELFREP_ALL=[];
 function openSelfRepModal(personId, healthRecordId, note){
   HEALTH_PERSON=personId; SR_HR=healthRecordId; EDIT_SR=note?note.id:null;
   el('sr-msg').className='msg';
-  el('sr-data').value=note?note.data_nota:new Date().toISOString().slice(0,10); el('sr-testo').value=note?note.testo:'';
+  el('sr-data').value=note?note.data_nota:localToday(); el('sr-testo').value=note?note.testo:'';
   el('sr-title').textContent = (note?'Modifica nota':'Nota')+' '+(healthRecordId ? 'su patologia' : 'di diario generale');
   el('sr-context').textContent = healthRecordId ? 'Andamento percepito di questa condizione.' : 'Diario di benessere generale, non legato a una patologia.';
   el('modal-selfrep').classList.add('open');
@@ -1709,7 +1709,7 @@ async function saveSelfRep(){
 
 function openConsentModal(personId){
   HEALTH_PERSON=personId; el('cons-msg').className='msg';
-  el('cons-ver').value='v1.0'; el('cons-data').value=new Date().toISOString().slice(0,10);
+  el('cons-ver').value='v1.0'; el('cons-data').value=localToday();
   el('cons-doc').value=''; el('cons-chk').checked=false;
   el('modal-consent').classList.add('open');
 }
@@ -1772,7 +1772,7 @@ let EDIT_HR=null;
 async function openPathoModal(personId, rec){
   HEALTH_PERSON=personId; EDIT_HR=rec?rec.id:null; el('pat-msg').className='msg';
   el('pat-title').textContent = rec?'Modifica dato sanitario':'Aggiungi dato sanitario';
-  el('pat-data').value=rec?(rec.data_rilevazione||''):new Date().toISOString().slice(0,10); el('pat-note').value=rec?(rec.note_self_report||''):'';
+  el('pat-data').value=rec?(rec.data_rilevazione||''):localToday(); el('pat-note').value=rec?(rec.note_self_report||''):'';
   el('pat-newbox').style.display='none'; el('pat-newname').value=''; el('pat-simwarn').style.display='none';
   await reloadPathoSelect(rec?rec.pathology_id:null);
   el('modal-patho').classList.add('open');
@@ -1869,11 +1869,11 @@ async function openMeetingModal(id){
     const {data:m}=await sb.from('meetings').select('data_ora,durata_min,sintesi').eq('id',id).single();
     if(m){
       // converte ISO -> formato datetime-local
-      el('m-dataora').value = m.data_ora ? new Date(m.data_ora).toISOString().slice(0,16) : '';
+      el('m-dataora').value = m.data_ora ? localDateTimeInput(m.data_ora) : '';
       el('m-durata').value = m.durata_min||''; el('m-sintesi').value = m.sintesi||'';
     }
   } else {
-    el('m-dataora').value=new Date().toISOString().slice(0,16); el('m-durata').value=''; el('m-sintesi').value='';
+    el('m-dataora').value=localDateTimeInput(new Date()); el('m-durata').value=''; el('m-sintesi').value='';
   }
   el('modal-meeting').classList.add('open');
 }
@@ -2163,8 +2163,8 @@ async function openTeamMeetingModal(id){
   el('tmm-title').textContent = id?'Modifica incontro':'Nuovo incontro di gruppo';
   if(id){
     const {data:m}=await sb.from('team_meetings').select('data_ora,durata_min,sintesi').eq('id',id).single();
-    if(m){ el('tm-dataora').value = m.data_ora ? new Date(m.data_ora).toISOString().slice(0,16) : ''; el('tm-durata').value = m.durata_min||''; el('tm-sintesi').value = m.sintesi||''; }
-  } else { el('tm-dataora').value=new Date().toISOString().slice(0,16); el('tm-durata').value=''; el('tm-sintesi').value=''; }
+    if(m){ el('tm-dataora').value = m.data_ora ? localDateTimeInput(m.data_ora) : ''; el('tm-durata').value = m.durata_min||''; el('tm-sintesi').value = m.sintesi||''; }
+  } else { el('tm-dataora').value=localDateTimeInput(new Date()); el('tm-durata').value=''; el('tm-sintesi').value=''; }
   el('modal-team-meeting').classList.add('open');
 }
 async function saveTeamMeeting(){
@@ -2190,6 +2190,10 @@ async function delTeamMeeting(id){
   loadTeamMeetings(CURRENT_TEAM, ME.ruolo==='admin'||ME.ruolo==='consulente');
 }
 
+// Valori per <input type="datetime-local"/"date"> nell'ora LOCALE (italiana):
+// toISOString() da solo dà l'ora UTC, 1-2 ore indietro rispetto all'Italia.
+function localDateTimeInput(d){ const x=new Date(d); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,16); }
+function localToday(){ return localDateTimeInput(new Date()).slice(0,10); }
 function fmtDateTime(dt){ if(!dt)return''; const d=new Date(dt); return d.toLocaleString('it-IT',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
 
 let HEALTH_PERSON=null;
