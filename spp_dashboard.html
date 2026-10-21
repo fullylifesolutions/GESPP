@@ -2098,17 +2098,26 @@ async function searchTeamMembers(){
   const q=el('tm-search').value.trim();
   const box=el('tm-results');
   if(!q && !TEAM_MEMBER_FILTER_COMPANY){ box.innerHTML=''; return; }
-  let query=sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)').eq('archiviata',false).order('nome').order('cognome').limit(20);
-  if(q) query=query.or(`nome.ilike.%${q}%,cognome.ilike.%${q}%`);
+  // Elenco di un'azienda: tutte le persone (prima c'era un limite fisso a 20
+  // che troncava l'elenco alfabetico). Ricerca libera: tetto più ampio, con
+  // avviso se raggiunto. Chi è già nel team è escluso lato DB, così non
+  // "consuma" posti del tetto.
+  const MAX = TEAM_MEMBER_FILTER_COMPANY ? 1000 : 50;
+  let query=sb.from('persons').select('id,nome,cognome,company_id,companies(ragione_sociale)').eq('archiviata',false).order('nome').order('cognome').limit(MAX);
+  // ogni parola deve trovarsi in nome o cognome: "Rossi Mario" trova "Mario Rossi".
+  // Virgole e parentesi tolte: romperebbero la sintassi del filtro or().
+  q.replace(/[,()%]/g,' ').split(/\s+/).filter(Boolean).forEach(w=>{ query=query.or(`nome.ilike.%${w}%,cognome.ilike.%${w}%`); });
   if(TEAM_MEMBER_FILTER_COMPANY) query=query.eq('company_id',TEAM_MEMBER_FILTER_COMPANY);
+  const already=TEAM_MEMBERS_CACHE.map(m=>m.person_id);
+  if(already.length) query=query.not('id','in',`(${already.join(',')})`);
   const {data,error}=await query;
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
-  const already=new Set(TEAM_MEMBERS_CACHE.map(m=>m.person_id));
-  const results=(data||[]).filter(p=>!already.has(p.id));
+  const results=data||[];
   if(!results.length){ box.innerHTML='<div style="font-size:13px;color:var(--ink-soft);">Nessun risultato (o già nel team).</div>'; return; }
   box.innerHTML=results.map(p=>`<div class="sub-item"><div class="li-av">${initials(p.nome,p.cognome)}</div>
     <div class="m"><div>${escapeHtml(p.nome+' '+p.cognome)}</div><div class="d">${escapeHtml(p.companies?.ragione_sociale||'')||'—'}</div></div>
-    <button class="ghost small tm-add" data-id="${p.id}">+ Aggiungi</button></div>`).join('');
+    <button class="ghost small tm-add" data-id="${p.id}">+ Aggiungi</button></div>`).join('')
+    + (results.length>=MAX?`<div style="font-size:12px;color:var(--ink-soft);padding:6px 0;">Mostrati i primi ${MAX} risultati: scrivi qualche lettera in più per restringere la ricerca.</div>`:'');
   box.querySelectorAll('.tm-add').forEach(b=>b.addEventListener('click',async()=>{
     const {error:e}=await sb.from('team_members').insert({team_id:CURRENT_TEAM,person_id:b.dataset.id});
     if(e){ alert('Errore: '+e.message); return; }
