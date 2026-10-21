@@ -314,7 +314,7 @@
 
 <!-- MODAL PATOLOGIA -->
 <div class="modal-bg" id="modal-patho"><div class="modal">
-  <h3>Aggiungi dato sanitario</h3>
+  <h3 id="pat-title">Aggiungi dato sanitario</h3>
   <div id="pat-msg" class="msg"></div>
   <label>Patologia (dal catalogo) *</label>
   <div style="display:flex;gap:8px;align-items:flex-start;">
@@ -1523,19 +1523,21 @@ async function loadHealth(personId){
       const notesHtml = notes.length
         ? notes.map(n=>`<div style="display:flex;align-items:center;font-size:12px;color:var(--ink-soft);padding:4px 0 4px 12px;border-left:2px solid var(--line);margin:4px 0 4px 4px;">
             <span style="flex:1;">${fmtDate(n.data_nota)} — ${escapeHtml(n.testo)}</span>
-            ${canWrite?'<button class="ghost small note-arch" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
+            ${canWrite?'<button class="ghost small note-edit" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
         : '';
       return `<div class="sub-item" style="display:block;">
         <div style="display:flex;align-items:center;">
           <div class="m" style="flex:1;"><div>${escapeHtml(patName[r.pathology_id]||'—')}</div>
           <div class="d">${[r.data_rilevazione?fmtDate(r.data_rilevazione):'',escapeHtml(r.note_self_report||'')].filter(Boolean).join(' · ')||'—'}</div></div>
-          ${canWrite?'<button class="ghost small sr-add-pat" data-hr="'+r.id+'">+ Nota</button> <button class="ghost small hr-arch" data-id="'+r.id+'">Archivia</button>':''}
+          ${canWrite?'<button class="ghost small sr-add-pat" data-hr="'+r.id+'">+ Nota</button> <button class="ghost small hr-edit" data-id="'+r.id+'">Modifica</button> <button class="ghost small hr-arch" data-id="'+r.id+'">Archivia</button>':''}
         </div>
         ${notesHtml}
       </div>`;
     }).join('');
     if(canWrite){
       body.querySelectorAll('.sr-add-pat').forEach(b=>b.addEventListener('click',()=>openSelfRepModal(personId, b.dataset.hr)));
+      body.querySelectorAll('.hr-edit').forEach(b=>b.addEventListener('click',()=>openPathoModal(personId, records.find(r=>r.id===b.dataset.id))));
+      body.querySelectorAll('.note-edit').forEach(b=>b.addEventListener('click',()=>{ const n=SELFREP_ALL.find(x=>x.id===b.dataset.id); openSelfRepModal(personId, n.health_record_id, n); }));
       body.querySelectorAll('.hr-arch').forEach(b=>b.addEventListener('click',()=>archiveHealth('health_records',b.dataset.id,personId)));
       body.querySelectorAll('.note-arch').forEach(b=>b.addEventListener('click',()=>archiveHealth('self_reports',b.dataset.id,personId)));
     }
@@ -1547,7 +1549,7 @@ async function loadHealth(personId){
     <div style="display:flex;align-items:center;margin-bottom:8px;"><span style="font-size:14px;font-weight:600;flex:1;">Diario generale</span>
     ${canWrite?'<button class="ghost small" id="sr-add-gen">+ Nota diario</button>':''}</div>`;
   diaryHtml += generali.length
-    ? generali.map(n=>`<div class="sub-item"><div class="m"><div class="d">${fmtDate(n.data_nota)}</div><div>${escapeHtml(n.testo)}</div></div>${canWrite?'<button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
+    ? generali.map(n=>`<div class="sub-item"><div class="m"><div class="d">${fmtDate(n.data_nota)}</div><div>${escapeHtml(n.testo)}</div></div>${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
     : `<div style="font-size:13px;color:var(--ink-soft);padding:6px 0;">Nessuna nota di diario.</div>`;
   diaryHtml += `</div>`;
 
@@ -1560,6 +1562,7 @@ async function loadHealth(personId){
   body.insertAdjacentHTML('beforeend', diaryHtml);
   if(canWrite && el('sr-add-gen')) el('sr-add-gen').addEventListener('click',()=>openSelfRepModal(personId, null));
   if(canWrite) body.querySelectorAll('.note-arch-g').forEach(b=>b.addEventListener('click',()=>archiveHealth('self_reports',b.dataset.id,personId)));
+  if(canWrite) body.querySelectorAll('.note-edit-g').forEach(b=>b.addEventListener('click',()=>openSelfRepModal(personId, null, SELFREP_ALL.find(x=>x.id===b.dataset.id))));
   if(ME.ruolo==='admin' && el('hr-harddelete')) el('hr-harddelete').addEventListener('click',()=>hardDeleteHealth(personId));
 }
 async function archiveHealth(tabella, id, personId){
@@ -1578,24 +1581,29 @@ async function hardDeleteHealth(personId){
 }
 
 let SELFREP_ALL=[];
-function openSelfRepModal(personId, healthRecordId){
-  HEALTH_PERSON=personId; SR_HR=healthRecordId;
+// note: se passata, il modal modifica quella nota invece di crearne una nuova
+function openSelfRepModal(personId, healthRecordId, note){
+  HEALTH_PERSON=personId; SR_HR=healthRecordId; EDIT_SR=note?note.id:null;
   el('sr-msg').className='msg';
-  el('sr-data').value=new Date().toISOString().slice(0,10); el('sr-testo').value='';
-  el('sr-title').textContent = healthRecordId ? 'Nota su patologia' : 'Nota di diario generale';
+  el('sr-data').value=note?note.data_nota:new Date().toISOString().slice(0,10); el('sr-testo').value=note?note.testo:'';
+  el('sr-title').textContent = (note?'Modifica nota':'Nota')+' '+(healthRecordId ? 'su patologia' : 'di diario generale');
   el('sr-context').textContent = healthRecordId ? 'Andamento percepito di questa condizione.' : 'Diario di benessere generale, non legato a una patologia.';
   el('modal-selfrep').classList.add('open');
 }
-let SR_HR=null;
+let SR_HR=null, EDIT_SR=null;
 async function saveSelfRep(){
   const msg=el('sr-msg'); msg.className='msg';
   if(!el('sr-data').value||!el('sr-testo').value.trim()){ msg.textContent='Data e testo sono obbligatori.'; msg.className='msg err'; return; }
-  const payload={
-    person_id:HEALTH_PERSON, health_record_id:SR_HR||null, consultant_id:ME.id,
-    data_nota:el('sr-data').value, testo:el('sr-testo').value.trim(), fonte:'persona'
-  };
   const btn=el('sr-save'); btn.disabled=true; btn.textContent='Salvataggio…';
-  const {error}=await sb.from('self_reports').insert(payload);
+  let error;
+  if(EDIT_SR){
+    ({error}=await sb.from('self_reports').update({data_nota:el('sr-data').value, testo:el('sr-testo').value.trim()}).eq('id',EDIT_SR));
+  } else {
+    ({error}=await sb.from('self_reports').insert({
+      person_id:HEALTH_PERSON, health_record_id:SR_HR||null, consultant_id:ME.id,
+      data_nota:el('sr-data').value, testo:el('sr-testo').value.trim(), fonte:'persona'
+    }));
+  }
   btn.disabled=false; btn.textContent='Salva';
   if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
   el('modal-selfrep').classList.remove('open');
@@ -1662,17 +1670,25 @@ async function copyConsentLink(token){
 }
 
 let PATHO_LIST=[];
-async function openPathoModal(personId){
-  HEALTH_PERSON=personId; el('pat-msg').className='msg';
-  el('pat-data').value=new Date().toISOString().slice(0,10); el('pat-note').value='';
+// rec: se passato, il modal modifica quel dato sanitario invece di crearne uno nuovo
+let EDIT_HR=null;
+async function openPathoModal(personId, rec){
+  HEALTH_PERSON=personId; EDIT_HR=rec?rec.id:null; el('pat-msg').className='msg';
+  el('pat-title').textContent = rec?'Modifica dato sanitario':'Aggiungi dato sanitario';
+  el('pat-data').value=rec?(rec.data_rilevazione||''):new Date().toISOString().slice(0,10); el('pat-note').value=rec?(rec.note_self_report||''):'';
   el('pat-newbox').style.display='none'; el('pat-newname').value=''; el('pat-simwarn').style.display='none';
-  await reloadPathoSelect();
+  await reloadPathoSelect(rec?rec.pathology_id:null);
   el('modal-patho').classList.add('open');
 }
 async function reloadPathoSelect(selectId){
   const {data:pats}=await sb.from('pathologies').select('id,denominazione').eq('attiva',true).order('denominazione');
   PATHO_LIST=pats||[];
   el('pat-sel').innerHTML='<option value="">— seleziona —</option>'+PATHO_LIST.map(p=>`<option value="${p.id}">${escapeHtml(p.denominazione)}</option>`).join('');
+  // in modifica la patologia del record potrebbe essere stata disattivata dal catalogo: la mostro comunque
+  if(selectId && !PATHO_LIST.some(p=>p.id===selectId)){
+    const {data:p}=await sb.from('pathologies').select('id,denominazione').eq('id',selectId).maybeSingle();
+    if(p) el('pat-sel').insertAdjacentHTML('beforeend',`<option value="${p.id}">${escapeHtml(p.denominazione)} (non più in catalogo)</option>`);
+  }
   if(selectId) el('pat-sel').value=selectId;
 }
 // normalizza per confronto: minuscolo, senza spazi multipli/punteggiatura
@@ -1707,6 +1723,17 @@ async function saveNewPatho(){
 async function savePatho(){
   const msg=el('pat-msg'); msg.className='msg';
   if(!el('pat-sel').value){ msg.textContent='Seleziona una patologia.'; msg.className='msg err'; return; }
+  if(EDIT_HR){
+    const btn=el('pat-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+    const {error}=await sb.from('health_records').update({
+      pathology_id:el('pat-sel').value, data_rilevazione:el('pat-data').value||null, note_self_report:el('pat-note').value.trim()||null
+    }).eq('id',EDIT_HR);
+    btn.disabled=false; btn.textContent='Salva';
+    if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+    el('modal-patho').classList.remove('open');
+    loadHealth(HEALTH_PERSON);
+    return;
+  }
   const {data:consents}=await sb.from('health_consents').select('id').eq('person_id',HEALTH_PERSON).eq('stato','attivo').order('data_consenso',{ascending:false}).limit(1);
   if(!consents||!consents.length){ msg.textContent='Nessun consenso attivo. Impossibile salvare.'; msg.className='msg err'; return; }
   const payload={
