@@ -2218,15 +2218,19 @@ async function loadTeamMembers(teamId,canWrite){
   // non collegata al consulente compare qui ma la sua scheda non è
   // accessibile. Quali schede si possono aprire lo decide la RLS stessa:
   // una select su persons restituisce solo gli id visibili.
-  const {data:vis}=await sb.from('persons').select('id').in('id',data.map(m=>m.person_id));
+  // La stessa select porta reparto/ruolo/anno di assunzione, quindi solo per
+  // le schede accessibili (team_members_light resta com'è: vedi CLAUDE.md).
+  const {data:vis}=await sb.from('persons').select('id,reparto,ruolo_aziendale,anno_assunzione').in('id',data.map(m=>m.person_id));
   const apribili=new Set((vis||[]).map(v=>v.id));
+  const dettagli=new Map((vis||[]).map(v=>[v.id,v]));
   // cerchio verde solo per le schede accessibili: gli incontri degli altri
   // membri non sono leggibili (RLS meetings = can_access_person)
   const conPercorso=await personsWithMeetings([...apribili]);
   box.innerHTML=data.map(m=>{ const ok=apribili.has(m.person_id);
     return `<div class="sub-item"${ok?' style="cursor:pointer;" data-open="'+m.person_id+'"':''}>${avatarHtml(m, conPercorso.has(m.person_id))}
     <div class="m"><div>${escapeHtml(m.nome+' '+m.cognome)}</div>
-    <div class="d">${escapeHtml(m.ragione_sociale||'')||'—'}${ok?'':' · scheda non accessibile'}</div></div>
+    <div class="d">${(()=>{ const v=dettagli.get(m.person_id)||{};
+      return [escapeHtml(m.ragione_sociale||''),escapeHtml(v.reparto||''),escapeHtml(v.ruolo_aziendale||''),testoAnzianita(v.anno_assunzione)].filter(Boolean).join(' · ')||'—'; })()}${ok?'':' · scheda non accessibile'}</div></div>
     ${canWrite?'<button class="ghost small danger tm-remove" data-id="'+m.person_id+'">Rimuovi</button>':''}${ok?'<span class="li-arrow">›</span>':''}</div>`; }).join('');
   box.querySelectorAll('[data-open]').forEach(it=>it.addEventListener('click',e=>{ if(e.target.classList.contains('tm-remove')) return; openPersonCard(it.dataset.open, true); }));
   if(canWrite) box.querySelectorAll('.tm-remove').forEach(b=>b.addEventListener('click',()=>removeTeamMember(teamId,b.dataset.id)));
