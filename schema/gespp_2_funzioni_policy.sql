@@ -848,5 +848,46 @@ create policy company_notes_delete on public.company_notes
 grant select, insert, update, delete on public.company_notes to authenticated;
 
 -- ============================================================================
+--  FAMIGLIA e DOMANDE della persona (tabelle nel file 1)
+-- ============================================================================
+-- Stessa gate dei dati della persona (can_access_person), escluso il
+-- consulente_limitato anche in lettura. Nessun consenso sanitario richiesto:
+-- non sono dati art.9. Nessuna policy di delete: le domande si archiviano,
+-- la famiglia si svuota modificando i campi; la cancellazione della persona
+-- le elimina in cascata.
+drop policy if exists person_family_read on public.person_family;
+create policy person_family_read on public.person_family
+    for select using ( public.can_access_person(person_id) and public.current_role() <> 'consulente_limitato' );
+drop policy if exists person_family_insert on public.person_family;
+create policy person_family_insert on public.person_family
+    for insert with check ( public.can_write() and public.can_access_person(person_id) );
+drop policy if exists person_family_update on public.person_family;
+create policy person_family_update on public.person_family
+    for update using ( public.can_write() and public.can_access_person(person_id) )
+    with check ( public.can_write() and public.can_access_person(person_id) );
+
+drop policy if exists person_questions_read on public.person_questions;
+create policy person_questions_read on public.person_questions
+    for select using ( public.can_access_person(person_id) and public.current_role() <> 'consulente_limitato' );
+drop policy if exists person_questions_insert on public.person_questions;
+create policy person_questions_insert on public.person_questions
+    for insert with check ( public.can_write() and public.can_access_person(person_id) );
+drop policy if exists person_questions_update on public.person_questions;
+create policy person_questions_update on public.person_questions
+    for update using ( public.can_write() and public.can_access_person(person_id) )
+    with check ( public.can_write() and public.can_access_person(person_id) );
+
+-- Audit FULL come persons (dato personale, non sanitario).
+drop trigger if exists trg_audit_person_family on public.person_family;
+create trigger trg_audit_person_family after insert or update or delete on public.person_family
+    for each row execute function public.fn_audit_write('full');
+drop trigger if exists trg_audit_person_questions on public.person_questions;
+create trigger trg_audit_person_questions after insert or update or delete on public.person_questions
+    for each row execute function public.fn_audit_write('full');
+
+-- Grant espliciti (da 2026-10-30 Supabase non li concede più in automatico).
+grant select, insert, update on public.person_family, public.person_questions to authenticated;
+
+-- ============================================================================
 --  FINE FILE 2. Procedere con gespp_3_dati_iniziali.sql
 -- ============================================================================

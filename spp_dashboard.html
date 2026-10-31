@@ -415,6 +415,29 @@
   <div class="modal-actions"><button class="ghost" id="sr-cancel">Annulla</button><button class="primary" id="sr-save">Salva</button></div>
 </div></div>
 
+<!-- MODAL FAMIGLIA -->
+<div class="modal-bg" id="modal-family"><div class="modal">
+  <h3>Famiglia</h3>
+  <div id="fam-msg" class="msg"></div>
+  <label>Padre</label><textarea id="fam-padre" rows="2"></textarea>
+  <label>Madre</label><textarea id="fam-madre" rows="2"></textarea>
+  <label>Fratelli/sorelle</label><textarea id="fam-fratelli" rows="2"></textarea>
+  <label>Compagno/a</label><textarea id="fam-compagno" rows="2"></textarea>
+  <label>Figli</label><textarea id="fam-figli" rows="2"></textarea>
+  <div class="modal-actions"><button class="ghost" id="fam-cancel">Annulla</button><button class="primary" id="fam-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL DOMANDA -->
+<div class="modal-bg" id="modal-question"><div class="modal">
+  <h3 id="q-title">Nuova domanda</h3>
+  <div id="q-msg" class="msg"></div>
+  <label>Data *</label>
+  <input type="date" id="q-data">
+  <label>Qual è la tua domanda *</label>
+  <textarea id="q-testo" rows="4"></textarea>
+  <div class="modal-actions"><button class="ghost" id="q-cancel">Annulla</button><button class="primary" id="q-save">Salva</button></div>
+</div></div>
+
 <!-- MODAL CALENDARIO PRENOTAZIONI -->
 <div class="modal-bg" id="modal-calendar"><div class="modal">
   <h3 id="mcal-title">Calendario prenotazioni</h3><div id="mcal-msg" class="msg"></div>
@@ -880,6 +903,18 @@ async function openPersonCard(id, daTeam){
         <span style="flex:1;"></span><span id="health-actions"></span></div>
       <div id="health-body"><div class="spinner">Caricamento…</div></div>
     </div>
+    <div class="section" id="family-section">
+      <div class="sh"><span class="st">Famiglia</span><span id="family-actions"></span></div>
+      <div id="family-body"><div class="spinner">Caricamento…</div></div>
+    </div>
+    <div class="section" id="diary-section">
+      <div class="sh"><span class="st">Diario</span><span id="diary-actions"></span></div>
+      <div id="diary-body"><div class="spinner">Caricamento…</div></div>
+    </div>
+    <div class="section" id="question-section">
+      <div class="sh"><span class="st">Qual è la tua domanda</span>${canWrite?'<button class="primary small" id="q-new">+ Domanda</button>':''}</div>
+      <div id="question-body"><div class="spinner">Caricamento…</div></div>
+    </div>
     <div class="section">
       <div class="sh"><span class="st">Incontri</span>${canWrite?'<button class="primary small" id="meet-new">+ Incontro</button>':''}</div>
       <div id="meet-body"><div class="spinner">Caricamento…</div></div>
@@ -893,9 +928,12 @@ async function openPersonCard(id, daTeam){
   if(isAdmin && p.tipo==='professionista') el('passign-btn').addEventListener('click', ()=>openProfAssign(id));
   loadSpp(id);
   loadHealth(id);
+  loadFamily(id);
+  loadQuestions(id);
   loadMeetings(id);
   loadPersonBookings(p);
   if(canWrite) el('meet-new').addEventListener('click', ()=>openMeetingModal());
+  if(canWrite) el('q-new').addEventListener('click', ()=>openQuestionModal());
 }
 
 // Prenotazioni della persona: booking_slots non ha person_id (i dati li
@@ -1566,9 +1604,13 @@ async function saveProfAssign(){
 // Il consulente_limitato non vede nulla di sanitario.
 async function loadHealth(personId){
   const body=el('health-body'), tag=el('health-tag'), actions=el('health-actions');
+  // il diario sta in una sezione sua ma segue le stesse regole (consenso attivo)
+  const diaryBody=el('diary-body'), diaryActions=el('diary-actions');
+  diaryActions.innerHTML='';
   if(ME.ruolo==='consulente_limitato'){
     tag.innerHTML=''; actions.innerHTML='';
     body.innerHTML=`<div class="empty">Sezione non disponibile in formazione.</div>`;
+    diaryBody.innerHTML=`<div class="empty">Sezione non disponibile in formazione.</div>`;
     return;
   }
   const canWrite = ME.ruolo==='admin'||ME.ruolo==='consulente';
@@ -1576,7 +1618,7 @@ async function loadHealth(personId){
   const {data:consents,error:cErr}=await sb.from('health_consents')
     .select('id,testo_versione,data_consenso,stato,token,token_scadenza,token_usato')
     .eq('person_id',personId).order('data_consenso',{ascending:false});
-  if(cErr){ body.innerHTML=`<div class="empty">Errore: ${cErr.message}</div>`; return; }
+  if(cErr){ body.innerHTML=`<div class="empty">Errore: ${cErr.message}</div>`; diaryBody.innerHTML=''; return; }
   const active=(consents||[]).find(c=>c.stato==='attivo');
 
   if(!active){
@@ -1594,6 +1636,7 @@ async function loadHealth(personId){
           ${canWrite?'<button class="ghost small danger" id="cons-cancel-remote">Annulla richiesta</button>':''}
         </div>`
       : `<div class="empty">Per inserire dati sanitari serve prima il consenso attivo della persona.</div>`;
+    diaryBody.innerHTML=`<div class="empty">Il diario richiede il consenso attivo della persona (vedi Dati sanitari).</div>`;
     if(canWrite){
       el('cons-add').addEventListener('click',()=>openConsentModal(personId));
       el('cons-remote').addEventListener('click',()=>requestRemoteConsent(personId));
@@ -1617,7 +1660,7 @@ async function loadHealth(personId){
 
   // 2) LETTURA TRACCIATA: usa la funzione RPC che registra l'accesso nell'audit
   const {data:records,error:rErr}=await sb.rpc('get_health_records',{p_person_id:personId});
-  if(rErr){ body.innerHTML=`<div class="empty">Errore lettura dati sanitari: ${rErr.message}</div>`; return; }
+  if(rErr){ body.innerHTML=`<div class="empty">Errore lettura dati sanitari: ${rErr.message}</div>`; diaryBody.innerHTML=''; return; }
 
   // carica anche le note di self-report (lettura tracciata)
   const {data:allNotes}=await sb.rpc('get_self_reports',{p_person_id:personId});
@@ -1656,28 +1699,105 @@ async function loadHealth(personId){
     }
   }
 
-  // sezione DIARIO generale (note senza patologia)
+  // sezione DIARIO generale (note senza patologia), nel riquadro Diario
   const generali = SELFREP_ALL.filter(n=>!n.health_record_id);
-  let diaryHtml = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
-    <div style="display:flex;align-items:center;margin-bottom:8px;"><span style="font-size:14px;font-weight:600;flex:1;">Diario generale</span>
-    ${canWrite?'<button class="ghost small" id="sr-add-gen">+ Nota diario</button>':''}</div>`;
-  diaryHtml += generali.length
-    ? generali.map(n=>`<div class="sub-item"><div class="m"><div class="d">${fmtDate(n.data_nota)}</div><div>${escapeHtml(n.testo)}</div></div>${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
-    : `<div style="font-size:13px;color:var(--ink-soft);padding:6px 0;">Nessuna nota di diario.</div>`;
-  diaryHtml += `</div>`;
+  diaryActions.innerHTML = canWrite?'<button class="primary small" id="sr-add-gen">+ Nota diario</button>':'';
+  diaryBody.innerHTML = generali.length
+    ? generali.map(n=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(n.data_nota)}</div><div>${escapeHtml(n.testo)}</div></div>${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
+    : `<div class="empty" style="padding:14px;">Nessuna nota di diario.</div>`;
 
-  // diritto all'oblio: cancellazione definitiva, solo admin
+  // diritto all'oblio: cancellazione definitiva, solo admin (resta in Dati sanitari)
+  let oblioHtml='';
   if(ME.ruolo==='admin'){
-    diaryHtml += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
+    oblioHtml += `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
       <button class="ghost small danger" id="hr-harddelete">Cancellazione definitiva dati sanitari (diritto all'oblio)</button>
       <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 0;">Rimuove in modo irreversibile tutti i dati sanitari e i self-report di questa persona. Operazione tracciata.</p></div>`;
   }
-  body.insertAdjacentHTML('beforeend', diaryHtml);
+  body.insertAdjacentHTML('beforeend', oblioHtml);
   if(canWrite && el('sr-add-gen')) el('sr-add-gen').addEventListener('click',()=>openSelfRepModal(personId, null));
-  if(canWrite) body.querySelectorAll('.note-arch-g').forEach(b=>b.addEventListener('click',()=>archiveHealth('self_reports',b.dataset.id,personId)));
-  if(canWrite) body.querySelectorAll('.note-edit-g').forEach(b=>b.addEventListener('click',()=>openSelfRepModal(personId, null, SELFREP_ALL.find(x=>x.id===b.dataset.id))));
+  if(canWrite) diaryBody.querySelectorAll('.note-arch-g').forEach(b=>b.addEventListener('click',()=>archiveHealth('self_reports',b.dataset.id,personId)));
+  if(canWrite) diaryBody.querySelectorAll('.note-edit-g').forEach(b=>b.addEventListener('click',()=>openSelfRepModal(personId, null, SELFREP_ALL.find(x=>x.id===b.dataset.id))));
   if(ME.ruolo==='admin' && el('hr-harddelete')) el('hr-harddelete').addEventListener('click',()=>hardDeleteHealth(personId));
 }
+// ---------- FAMIGLIA ----------
+// Una riga per persona in person_family (salvataggio con upsert su person_id).
+// Non è dato sanitario: nessun consenso richiesto; nascosta al consulente_limitato.
+const FAMILY_FIELDS=[['padre','Padre','fam-padre'],['madre','Madre','fam-madre'],
+  ['fratelli_sorelle','Fratelli/sorelle','fam-fratelli'],['compagno','Compagno/a','fam-compagno'],['figli','Figli','fam-figli']];
+let FAMILY_ROW=null;
+async function loadFamily(personId){
+  const body=el('family-body'), actions=el('family-actions');
+  actions.innerHTML='';
+  if(ME.ruolo==='consulente_limitato'){ body.innerHTML=`<div class="empty">Sezione non disponibile in formazione.</div>`; return; }
+  const {data,error}=await sb.from('person_family').select('padre,madre,fratelli_sorelle,compagno,figli').eq('person_id',personId).maybeSingle();
+  if(error){ body.innerHTML=`<div class="empty">Errore: ${escapeHtml(error.message)}</div>`; return; }
+  FAMILY_ROW=data||{};
+  const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
+  if(canWrite){ actions.innerHTML='<button class="ghost small" id="fam-edit">Modifica</button>'; el('fam-edit').addEventListener('click',openFamilyModal); }
+  body.innerHTML=FAMILY_FIELDS.map(([k,lab])=>`<div class="sub-item"><div class="m"><div class="d">${lab}</div><div style="white-space:pre-wrap;">${FAMILY_ROW[k]?escapeHtml(FAMILY_ROW[k]):'<span style="color:var(--ink-soft)">—</span>'}</div></div></div>`).join('');
+}
+function openFamilyModal(){
+  el('fam-msg').className='msg';
+  FAMILY_FIELDS.forEach(([k,,id])=>el(id).value=(FAMILY_ROW&&FAMILY_ROW[k])||'');
+  el('modal-family').classList.add('open');
+}
+async function saveFamily(){
+  const msg=el('fam-msg'); msg.className='msg';
+  const payload={person_id:CURRENT_PERSON, updated_at:new Date().toISOString()};
+  FAMILY_FIELDS.forEach(([k,,id])=>payload[k]=el(id).value.trim()||null);
+  const btn=el('fam-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const {error}=await sb.from('person_family').upsert(payload,{onConflict:'person_id'});
+  btn.disabled=false; btn.textContent='Salva';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  el('modal-family').classList.remove('open');
+  loadFamily(CURRENT_PERSON);
+}
+
+// ---------- QUAL È LA TUA DOMANDA ----------
+// Più domande per persona, con data; si modificano e si archiviano (come il diario).
+let QUESTIONS=[], EDIT_Q=null;
+async function loadQuestions(personId){
+  const body=el('question-body');
+  if(ME.ruolo==='consulente_limitato'){ body.innerHTML=`<div class="empty">Sezione non disponibile in formazione.</div>`; return; }
+  const {data,error}=await sb.from('person_questions').select('id,data_domanda,testo')
+    .eq('person_id',personId).eq('archiviato',false).order('data_domanda',{ascending:false}).order('created_at',{ascending:false});
+  if(error){ body.innerHTML=`<div class="empty">Errore: ${escapeHtml(error.message)}</div>`; return; }
+  QUESTIONS=data||[];
+  const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
+  if(!QUESTIONS.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessuna domanda.${canWrite?' Aggiungila con "+ Domanda".':''}</div>`; return; }
+  body.innerHTML=QUESTIONS.map(q=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(q.data_domanda)}</div><div style="white-space:pre-wrap;">${escapeHtml(q.testo)}</div></div>${canWrite?'<button class="ghost small q-edit" data-id="'+q.id+'">Modifica</button> <button class="ghost small q-arch" data-id="'+q.id+'">Archivia</button>':''}</div>`).join('');
+  if(canWrite){
+    body.querySelectorAll('.q-edit').forEach(b=>b.addEventListener('click',()=>openQuestionModal(QUESTIONS.find(q=>q.id===b.dataset.id))));
+    body.querySelectorAll('.q-arch').forEach(b=>b.addEventListener('click',()=>archiveQuestion(b.dataset.id)));
+  }
+}
+function openQuestionModal(q){
+  EDIT_Q=q?q.id:null; el('q-msg').className='msg';
+  el('q-title').textContent=q?'Modifica domanda':'Nuova domanda';
+  el('q-data').value=q?q.data_domanda:localToday();
+  el('q-testo').value=q?q.testo:'';
+  el('modal-question').classList.add('open');
+}
+async function saveQuestion(){
+  const msg=el('q-msg'); msg.className='msg';
+  const data=el('q-data').value, testo=el('q-testo').value.trim();
+  if(!data||!testo){ msg.textContent='Data e domanda sono obbligatorie.'; msg.className='msg err'; return; }
+  const btn=el('q-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  let error;
+  if(EDIT_Q) ({error}=await sb.from('person_questions').update({data_domanda:data, testo, updated_at:new Date().toISOString()}).eq('id',EDIT_Q));
+  else ({error}=await sb.from('person_questions').insert({person_id:CURRENT_PERSON, data_domanda:data, testo}));
+  btn.disabled=false; btn.textContent='Salva';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  el('modal-question').classList.remove('open'); EDIT_Q=null;
+  loadQuestions(CURRENT_PERSON);
+}
+async function archiveQuestion(id){
+  if(!confirm('Archiviare questa domanda?\n\nVerrà nascosta dalla scheda ma resta conservata.')) return;
+  const {error}=await sb.from('person_questions').update({archiviato:true}).eq('id',id);
+  if(error){ alert('Errore: '+error.message); return; }
+  loadQuestions(CURRENT_PERSON);
+}
+
 async function archiveHealth(tabella, id, personId){
   if(!confirm('Archiviare questo elemento?\n\nVerrà nascosto dalla vista ma resta conservato e tracciato (per correzioni di errori ordinari).')) return;
   const {error}=await sb.from(tabella).update({archiviato:true}).eq('id',id);
@@ -2545,8 +2665,12 @@ el('tmm-cnote').addEventListener('click', async ()=>{
   openCompanyNoteFromMeeting((data||[]).map(m=>m.company_id));
 });
 el('mcal-cancel').addEventListener('click', ()=>{ el('modal-calendar').classList.remove('open'); });
+el('fam-cancel').addEventListener('click', ()=>{ el('modal-family').classList.remove('open'); });
+el('fam-save').addEventListener('click', saveFamily);
+el('q-cancel').addEventListener('click', ()=>{ el('modal-question').classList.remove('open'); EDIT_Q=null; });
+el('q-save').addEventListener('click', saveQuestion);
 el('mcal-save').addEventListener('click', saveCalendar);
-[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar'],['modal-cnote']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar'],['modal-cnote'],['modal-family'],['modal-question']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
 el('modal-team-member').addEventListener('click', e=>{ if(e.target===el('modal-team-member')) closeTeamMemberModal(); });
 
 // ══════════════════════════════════════════════════════════════════════════

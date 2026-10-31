@@ -531,5 +531,38 @@ create index if not exists idx_company_notes_company on public.company_notes(com
 alter table public.company_notes enable row level security;
 
 -- ============================================================================
+-- FAMIGLIA e DOMANDE della persona (scheda persona). Dati personali, NON
+-- sanitari: nessun controllo di consenso sanitario, ma nascosti al
+-- consulente_limitato come i dati sanitari. Policy/trigger nel file 2.
+-- person_family: una riga per persona (campi testo liberi).
+-- person_questions: "Qual è la tua domanda", più righe con data; si
+-- archiviano invece di cancellarle, come il diario.
+-- ----------------------------------------------------------------------------
+create table if not exists public.person_family (
+    id               uuid primary key default gen_random_uuid(), -- serve a fn_audit_write
+    person_id        uuid not null unique references public.persons(id) on delete cascade,
+    padre            text,
+    madre            text,
+    fratelli_sorelle text,
+    compagno         text,
+    figli            text,
+    updated_at       timestamptz not null default now()
+);
+
+create table if not exists public.person_questions (
+    id           uuid primary key default gen_random_uuid(),
+    person_id    uuid not null references public.persons(id) on delete cascade,
+    data_domanda date not null default current_date,
+    testo        text not null,
+    archiviato   boolean not null default false,
+    created_at   timestamptz not null default now(),
+    updated_at   timestamptz
+);
+create index if not exists idx_person_questions_person on public.person_questions(person_id);
+
+alter table public.person_family    enable row level security;
+alter table public.person_questions enable row level security;
+
+-- ============================================================================
 --  FINE FILE 1. Procedere con gespp_2_funzioni_policy.sql
 -- ============================================================================
