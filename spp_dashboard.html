@@ -267,6 +267,7 @@
   <div id="emp-fields">
     <label>Sede</label><select id="p-sede"></select>
     <div class="grid2"><div><label>Reparto</label><input type="text" id="p-reparto"></div><div><label>Ruolo aziendale</label><input type="text" id="p-ruolo"></div></div>
+    <div class="grid2"><div><label>Anno di assunzione</label><input type="number" id="p-assunzione" min="1950" step="1" placeholder="es. 2015"></div><div></div></div>
   </div>
   <!-- campo professionista -->
   <div id="prof-fields" style="display:none;">
@@ -748,7 +749,7 @@ async function loadCompanyTeams(companyId, companyName){
 // ---------- PERSONE (dipendenti dentro azienda) ----------
 async function loadPersons(companyId,canWrite){
   const box=el('persons-list');
-  const {data,error}=await sb.from('persons').select('id,nome,cognome,reparto,ruolo_aziendale,site_id,archiviata').eq('company_id',companyId).order('archiviata').order('nome').order('cognome');
+  const {data,error}=await sb.from('persons').select('id,nome,cognome,reparto,ruolo_aziendale,anno_assunzione,site_id,archiviata').eq('company_id',companyId).order('archiviata').order('nome').order('cognome');
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   setCompanyTabCount('persone', data.filter(p=>!p.archiviata).length);
   if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna persona inserita.</div>`; return; }
@@ -758,7 +759,7 @@ async function loadPersons(companyId,canWrite){
   box.innerHTML=visibili.map(p=>`<div class="sub-item" style="cursor:pointer;${p.archiviata?'opacity:.55;':''}" data-id="${p.id}" data-q="${escapeHtml([p.nome,p.cognome,p.reparto,p.ruolo_aziendale].filter(Boolean).join(' ').toLowerCase())}">
     <div class="li-av">${initials(p.nome,p.cognome)}</div>
     <div class="m"><div>${escapeHtml(p.nome+' '+p.cognome)} ${p.archiviata?'<span style="font-size:11px;color:var(--ink-soft);">(archiviata)</span>':''}</div>
-    <div class="d">${[escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||'')].filter(Boolean).join(' · ')||'—'}</div></div>
+    <div class="d">${[escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||''),testoAnzianita(p.anno_assunzione)].filter(Boolean).join(' · ')||'—'}</div></div>
     ${canWrite?'<button class="ghost small person-edit" data-id="'+p.id+'">Modifica</button> <button class="ghost small person-arch" data-id="'+p.id+'" data-a="'+(p.archiviata?'1':'0')+'" data-nome="'+escapeHtml(p.nome+' '+p.cognome)+'">'+(p.archiviata?'Ripristina':'Archivia')+'</button>':''}<span class="li-arrow">›</span></div>`).join('');
   const arch=data.some(p=>p.archiviata);
   if(arch && !SHOW_ARCH_PERS) box.insertAdjacentHTML('beforeend',`<div style="padding:8px 16px;"><a id="show-arch" style="color:var(--accent);cursor:pointer;font-size:13px;">Mostra archiviate</a></div>`);
@@ -827,12 +828,21 @@ async function viewProfessionals(){
 }
 let SHOW_ARCH_PROF=false;
 
+// Anni di servizio dall'anno di assunzione (anno corrente - anno assunzione):
+// approssimato all'anno, non tiene conto del mese.
+function testoAnzianita(anno){
+  if(anno==null) return '';
+  const n=new Date().getFullYear()-anno;
+  if(n<1) return "assunto quest'anno";
+  return `${n} ${n===1?'anno':'anni'} di servizio`;
+}
+
 // ---------- SCHEDA PERSONA ----------
 let CURRENT_PERSON=null, CURRENT_PERSON_OBJ=null;
 // daTeam: aperta dall'elenco membri di un team (CURRENT_TEAM) -> il
 // "indietro" torna al team invece che all'azienda/professionisti.
 async function openPersonCard(id, daTeam){
-  const {data:p}=await sb.from('persons').select('nome,cognome,email,tipo,reparto,ruolo_aziendale,professione,company_id').eq('id',id).single();
+  const {data:p}=await sb.from('persons').select('nome,cognome,email,tipo,reparto,ruolo_aziendale,anno_assunzione,professione,company_id').eq('id',id).single();
   CURRENT_PERSON=id; CURRENT_PERSON_OBJ=p;
   const teamId=daTeam?CURRENT_TEAM:null;
   const teamAz=teamId?CURRENT_TEAM_DA_AZIENDA:null; // team aperto dalla scheda azienda
@@ -851,7 +861,7 @@ async function openPersonCard(id, daTeam){
   else if(TAB==='professionisti'){ el('back-x').addEventListener('click',()=>goTab('professionisti')); }
   else { el('back-x').addEventListener('click',()=>goTab('aziende')); el('back-comp').addEventListener('click',()=>enterCompany(p.company_id)); }
   const dett = p.tipo==='professionista' ? escapeHtml(p.professione||'Professionista')
-    : [escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||'')].filter(Boolean).join(' · ')||'Dipendente';
+    : [escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||''),testoAnzianita(p.anno_assunzione)].filter(Boolean).join(' · ')||'Dipendente';
   const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
   const isAdmin=ME.ruolo==='admin';
   const backLabel = teamId ? '← Team' : TAB==='professionisti' ? '← Professionisti' : '← Azienda';
@@ -994,7 +1004,7 @@ function fmtDate(d){ if(!d)return''; const p=d.split('-'); return p.length===3?`
 async function openPersonModal(id, mode){
   EDIT_PERSON=id; PERSON_MODE=mode; el('mp-msg').className='msg';
   el('mp-title').textContent = (id?'Modifica ':'Nuova ') + (mode==='professionista'?'professionista':'persona');
-  ['p-nome','p-cognome','p-cf','p-nascita','p-email','p-tel','p-reparto','p-ruolo','p-professione'].forEach(f=>el(f).value='');
+  ['p-nome','p-cognome','p-cf','p-nascita','p-email','p-tel','p-reparto','p-ruolo','p-assunzione','p-professione'].forEach(f=>el(f).value='');
   // mostra i campi giusti
   el('emp-fields').style.display = mode==='dipendente' ? 'block' : 'none';
   el('prof-fields').style.display = mode==='professionista' ? 'block' : 'none';
@@ -1004,11 +1014,11 @@ async function openPersonModal(id, mode){
     el('p-sede').innerHTML = '<option value="">— nessuna —</option>' + (sites||[]).map(s=>`<option value="${s.id}">${escapeHtml(s.nome_sede)}${s.principale?' (principale)':''}</option>`).join('');
   }
   if(id){
-    const {data:p}=await sb.from('persons').select('nome,cognome,codice_fiscale,data_nascita,email,telefono,reparto,ruolo_aziendale,professione,site_id').eq('id',id).single();
+    const {data:p}=await sb.from('persons').select('nome,cognome,codice_fiscale,data_nascita,email,telefono,reparto,ruolo_aziendale,anno_assunzione,professione,site_id').eq('id',id).single();
     if(p){
       el('p-nome').value=p.nome||''; el('p-cognome').value=p.cognome||''; el('p-cf').value=p.codice_fiscale||'';
       el('p-nascita').value=p.data_nascita||''; el('p-email').value=p.email||''; el('p-tel').value=p.telefono||'';
-      el('p-reparto').value=p.reparto||''; el('p-ruolo').value=p.ruolo_aziendale||''; el('p-professione').value=p.professione||'';
+      el('p-reparto').value=p.reparto||''; el('p-ruolo').value=p.ruolo_aziendale||''; el('p-assunzione').value=p.anno_assunzione??''; el('p-professione').value=p.professione||'';
       if(mode==='dipendente' && p.site_id) el('p-sede').value=p.site_id;
     }
   }
@@ -1025,14 +1035,20 @@ async function savePerson(){
     email:el('p-email').value.trim()||null,
     telefono:el('p-tel').value.trim()||null
   };
+  let annoAss=null;
+  if(PERSON_MODE==='dipendente' && el('p-assunzione').value.trim()!==''){
+    annoAss=Number(el('p-assunzione').value);
+    const annoOggi=new Date().getFullYear();
+    if(!Number.isInteger(annoAss)||annoAss<1950||annoAss>annoOggi){ msg.textContent=`Anno di assunzione: inserisci un anno tra 1950 e ${annoOggi}.`; msg.className='msg err'; return; }
+  }
   let payload;
   if(PERSON_MODE==='dipendente'){
     payload={...base, tipo:'dipendente', company_id:CURRENT_COMPANY,
       site_id:el('p-sede').value||null, reparto:el('p-reparto').value.trim()||null,
-      ruolo_aziendale:el('p-ruolo').value.trim()||null, professione:null};
+      ruolo_aziendale:el('p-ruolo').value.trim()||null, anno_assunzione:annoAss, professione:null};
   } else {
     payload={...base, tipo:'professionista', company_id:null, site_id:null,
-      reparto:null, ruolo_aziendale:null, professione:el('p-professione').value.trim()||null};
+      reparto:null, ruolo_aziendale:null, anno_assunzione:null, professione:el('p-professione').value.trim()||null};
   }
   const btn=el('mp-save'); btn.disabled=true; btn.textContent='Salvataggio…';
   let err;

@@ -93,6 +93,7 @@ create table public.persons (
     site_id         uuid references public.company_sites(id) on delete set null,
     reparto         text,
     ruolo_aziendale text,
+    anno_assunzione integer check (anno_assunzione >= 1950), -- anni di servizio calcolati dal frontend
     -- campo per i professionisti
     professione     text,
     -- archiviazione (patch14)
