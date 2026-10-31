@@ -61,6 +61,7 @@
   .list-item:hover{background:#fafbfc;}
   .li-ic{width:36px;height:36px;border-radius:8px;background:#eef4f7;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
   .li-av{width:34px;height:34px;border-radius:50%;background:#eef4f7;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--accent-ink);flex-shrink:0;}
+  .li-av.one2one{background:#3f8f5c;color:#fff;}
   .li-main{flex:1;}
   .li-main .t{font-size:14px;font-weight:600;}
   .li-main .d{font-size:12px;color:var(--ink-soft);}
@@ -770,6 +771,28 @@ async function loadCompanyTeams(companyId, companyName){
 }
 
 // ---------- PERSONE (dipendenti dentro azienda) ----------
+// Percorso one to one avviato = almeno un incontro individuale (meetings).
+// Lettura a pagine da 1000 righe (limite di PostgREST), a blocchi di id per
+// non allungare troppo l'URL della richiesta.
+async function personsWithMeetings(ids){
+  const set=new Set();
+  for(let i=0;i<ids.length;i+=150){
+    const chunk=ids.slice(i,i+150);
+    for(let from=0;;from+=1000){
+      const {data,error}=await sb.from('meetings').select('person_id').in('person_id',chunk).order('id').range(from,from+999);
+      if(error||!data) break;
+      data.forEach(r=>set.add(r.person_id));
+      if(data.length<1000) break;
+    }
+  }
+  return set;
+}
+function avatarHtml(p, conPercorso){
+  return conPercorso
+    ? `<div class="li-av one2one" title="Percorso one to one avviato">${initials(p.nome,p.cognome)}</div>`
+    : `<div class="li-av">${initials(p.nome,p.cognome)}</div>`;
+}
+
 async function loadPersons(companyId,canWrite){
   const box=el('persons-list');
   const {data,error}=await sb.from('persons').select('id,nome,cognome,reparto,ruolo_aziendale,anno_assunzione,site_id,archiviata').eq('company_id',companyId).order('archiviata').order('nome').order('cognome');
@@ -777,10 +800,11 @@ async function loadPersons(companyId,canWrite){
   setCompanyTabCount('persone', data.filter(p=>!p.archiviata).length);
   if(!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna persona inserita.</div>`; return; }
   const visibili = SHOW_ARCH_PERS ? data : data.filter(p=>!p.archiviata);
+  const conPercorso = await personsWithMeetings(visibili.map(p=>p.id));
   if(!visibili.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna persona attiva. ${data.some(p=>p.archiviata)?'<a id="show-arch" style="color:var(--accent);cursor:pointer;">Mostra archiviate</a>':''}</div>`;
     if(el('show-arch')) el('show-arch').addEventListener('click',()=>{SHOW_ARCH_PERS=true;loadPersons(companyId,canWrite);}); return; }
   box.innerHTML=visibili.map(p=>`<div class="sub-item" style="cursor:pointer;${p.archiviata?'opacity:.55;':''}" data-id="${p.id}" data-q="${escapeHtml([p.nome,p.cognome,p.reparto,p.ruolo_aziendale].filter(Boolean).join(' ').toLowerCase())}">
-    <div class="li-av">${initials(p.nome,p.cognome)}</div>
+    ${avatarHtml(p, conPercorso.has(p.id))}
     <div class="m"><div>${escapeHtml(p.nome+' '+p.cognome)} ${p.archiviata?'<span style="font-size:11px;color:var(--ink-soft);">(archiviata)</span>':''}</div>
     <div class="d">${[escapeHtml(p.reparto||''),escapeHtml(p.ruolo_aziendale||''),testoAnzianita(p.anno_assunzione)].filter(Boolean).join(' · ')||'—'}</div></div>
     ${canWrite?'<button class="ghost small person-edit" data-id="'+p.id+'">Modifica</button> <button class="ghost small person-arch" data-id="'+p.id+'" data-a="'+(p.archiviata?'1':'0')+'" data-nome="'+escapeHtml(p.nome+' '+p.cognome)+'">'+(p.archiviata?'Ripristina':'Archivia')+'</button>':''}<span class="li-arrow">›</span></div>`).join('');
@@ -832,11 +856,12 @@ async function viewProfessionals(){
 
   const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
   const visibili = SHOW_ARCH_PROF ? data : data.filter(p=>!p.archiviata);
+  const conPercorso = await personsWithMeetings(visibili.map(p=>p.id));
   list.innerHTML=visibili.map(p=>{
     const cons = isAdmin
       ? `<div class="li-consultants">${(assignMap[p.id]&&assignMap[p.id].length)?'👤 '+assignMap[p.id].map(escapeHtml).join(', '):'<span class="none">nessun consulente assegnato</span>'}</div>`
       : '';
-    return `<div class="list-item" data-id="${p.id}" style="${p.archiviata?'opacity:.55;':''}"><div class="li-av">${initials(p.nome,p.cognome)}</div>
+    return `<div class="list-item" data-id="${p.id}" style="${p.archiviata?'opacity:.55;':''}">${avatarHtml(p, conPercorso.has(p.id))}
     <div class="li-main"><div class="t">${escapeHtml(p.nome+' '+p.cognome)} ${p.archiviata?'<span style="font-size:11px;color:var(--ink-soft);">(archiviato)</span>':''}</div><div class="d">${escapeHtml(p.professione||'—')}</div>${cons}</div>
     ${canWrite?'<button class="ghost small prof-edit" data-id="'+p.id+'">Modifica</button> <button class="ghost small prof-arch" data-id="'+p.id+'" data-a="'+(p.archiviata?'1':'0')+'" data-nome="'+escapeHtml(p.nome+' '+p.cognome)+'">'+(p.archiviata?'Ripristina':'Archivia')+'</button>':''}<span class="li-arrow">›</span></div>`;
   }).join('');
@@ -2195,8 +2220,11 @@ async function loadTeamMembers(teamId,canWrite){
   // una select su persons restituisce solo gli id visibili.
   const {data:vis}=await sb.from('persons').select('id').in('id',data.map(m=>m.person_id));
   const apribili=new Set((vis||[]).map(v=>v.id));
+  // cerchio verde solo per le schede accessibili: gli incontri degli altri
+  // membri non sono leggibili (RLS meetings = can_access_person)
+  const conPercorso=await personsWithMeetings([...apribili]);
   box.innerHTML=data.map(m=>{ const ok=apribili.has(m.person_id);
-    return `<div class="sub-item"${ok?' style="cursor:pointer;" data-open="'+m.person_id+'"':''}><div class="li-av">${initials(m.nome,m.cognome)}</div>
+    return `<div class="sub-item"${ok?' style="cursor:pointer;" data-open="'+m.person_id+'"':''}>${avatarHtml(m, conPercorso.has(m.person_id))}
     <div class="m"><div>${escapeHtml(m.nome+' '+m.cognome)}</div>
     <div class="d">${escapeHtml(m.ragione_sociale||'')||'—'}${ok?'':' · scheda non accessibile'}</div></div>
     ${canWrite?'<button class="ghost small danger tm-remove" data-id="'+m.person_id+'">Rimuovi</button>':''}${ok?'<span class="li-arrow">›</span>':''}</div>`; }).join('');
