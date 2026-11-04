@@ -247,6 +247,15 @@
   <div class="modal-actions"><button class="ghost" id="mr-cancel">Annulla</button><button class="primary" id="mr-save">Salva</button></div>
 </div></div>
 
+<!-- MODAL NOTA OPERATORE (taccuino personale) -->
+<div class="modal-bg" id="modal-onote"><div class="modal">
+  <h3 id="on-title">Nuova nota</h3><div id="on-msg" class="msg"></div>
+  <label>Titolo *</label><input type="text" id="on-titolo">
+  <label>Nota</label><textarea id="on-corpo" rows="10"></textarea>
+  <p style="font-size:11px;color:var(--ink-soft);margin:0 0 12px;">Visibile solo a te. Non inserire dati sanitari di singole persone.</p>
+  <div class="modal-actions"><button class="ghost" id="on-cancel">Annulla</button><button class="primary" id="on-save">Salva</button></div>
+</div></div>
+
 <!-- MODAL NOTA AZIENDA -->
 <!-- z-index sopra gli altri modal: si apre anche sopra un incontro aperto -->
 <div class="modal-bg" id="modal-cnote" style="z-index:20;"><div class="modal">
@@ -615,6 +624,7 @@ function renderTabs(){
     <div class="nav-tab" data-tab="calendario-lp">Calendario Professionisti</div>
     <div class="nav-tab" data-tab="mie-attivita">Le mie attività</div>
     <div class="nav-tab" data-tab="team">Team</div>
+    <div class="nav-tab" data-tab="note-op">Note</div>
     ${adminTabs}`;
   el('nav-tabs').querySelectorAll('.nav-tab').forEach(t=>t.addEventListener('click',()=>goTab(t.dataset.tab)));
 }
@@ -626,6 +636,7 @@ function goTab(tab){
   else if(tab==='calendario-lp') viewFreelanceCalendar();
   else if(tab==='mie-attivita') wcViewMyTasks();
   else if(tab==='team') viewTeams();
+  else if(tab==='note-op') viewOperatorNotes();
   else if(tab==='catalogo') viewCatalogo();
   else if(tab==='statistiche') viewStatistiche();
   else if(tab==='consenso-config') viewConsentConfig();
@@ -1309,6 +1320,80 @@ async function delCompanyNote(id){
   if(error){ alert('Errore: '+error.message); return; }
   if(!data||!data.length){ alert('Non hai i permessi per eliminare questa nota.'); return; }
   loadCompanyNotes(CURRENT_COMPANY, true);
+}
+
+// ---------- NOTE OPERATORE (operator_notes) ----------
+// Taccuino personale: la RLS restituisce solo le note dell'utente collegato
+// (admin compreso). Autore e date li timbra il DB (trigger operator_notes_stamp).
+let ONOTES=[], EDIT_ONOTE=null;
+async function viewOperatorNotes(){
+  el('crumbs').innerHTML='Note';
+  el('content').innerHTML=`
+    <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Note</h2>
+    <p class="panel-sub">Le tue note personali: le vedi solo tu.</p></div>
+    <button class="primary" id="onote-new">+ Nota</button></div>
+    <input type="text" id="onote-search" placeholder="Cerca nelle note…" style="margin-bottom:10px;">
+    <div class="section"><div id="onotes-list"><div class="spinner">Caricamento…</div></div></div>`;
+  el('onote-new').addEventListener('click',()=>openOperatorNoteModal(null));
+  el('onote-search').addEventListener('input',renderOperatorNotes);
+  await loadOperatorNotes();
+}
+async function loadOperatorNotes(){
+  const box=el('onotes-list'); if(!box) return;
+  const {data,error}=await sb.from('operator_notes').select('id,titolo,corpo,created_at,updated_at').order('created_at',{ascending:false});
+  if(error){ box.innerHTML=`<div class="empty">Errore: ${escapeHtml(error.message)}</div>`; return; }
+  ONOTES=data||[];
+  renderOperatorNotes();
+}
+function renderOperatorNotes(){
+  const box=el('onotes-list'); if(!box) return;
+  // più parole cercate separatamente, come nelle altre ricerche
+  const parole=(el('onote-search')?.value||'').toLowerCase().split(/\s+/).filter(Boolean);
+  const lista=ONOTES.filter(n=>{ const t=((n.titolo||'')+' '+(n.corpo||'')).toLowerCase(); return parole.every(w=>t.includes(w)); });
+  if(!ONOTES.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna nota. Usa "+ Nota" per scriverne una.</div>`; return; }
+  if(!lista.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessuna nota trovata.</div>`; return; }
+  box.innerHTML=lista.map(n=>`<div class="sub-item" style="display:block;">
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        <div class="m" style="flex:1;"><div style="font-weight:600;">${escapeHtml(n.titolo)}</div>
+          <div class="d">${fmtDateTime(n.created_at)}${n.updated_at?' · modificata il '+fmtDateTime(n.updated_at):''}</div></div>
+        <button class="ghost small onote-edit" data-id="${n.id}">Modifica</button> <button class="ghost small danger onote-del" data-id="${n.id}">Elimina</button>
+      </div>
+      ${n.corpo?`<div style="white-space:pre-wrap;font-size:13px;margin-top:6px;">${escapeHtml(n.corpo)}</div>`:''}
+    </div>`).join('');
+  box.querySelectorAll('.onote-edit').forEach(b=>b.addEventListener('click',()=>openOperatorNoteModal(b.dataset.id)));
+  box.querySelectorAll('.onote-del').forEach(b=>b.addEventListener('click',()=>delOperatorNote(b.dataset.id)));
+}
+function openOperatorNoteModal(id){
+  EDIT_ONOTE=id; el('on-msg').className='msg';
+  const n=id?ONOTES.find(x=>x.id===id):null;
+  el('on-title').textContent=n?'Modifica nota':'Nuova nota';
+  el('on-titolo').value=n?n.titolo:''; el('on-corpo').value=n?(n.corpo||''):'';
+  el('modal-onote').classList.add('open');
+  el('on-titolo').focus();
+}
+async function saveOperatorNote(){
+  const msg=el('on-msg'); msg.className='msg';
+  const titolo=el('on-titolo').value.trim();
+  if(!titolo){ msg.textContent='Il titolo è obbligatorio.'; msg.className='msg err'; return; }
+  const payload={titolo, corpo:el('on-corpo').value.trim()||null};
+  const btn=el('on-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  // .select() per accorgersi di un update negato dalla RLS (non dà errore, tocca 0 righe)
+  const {data,error} = EDIT_ONOTE
+    ? await sb.from('operator_notes').update(payload).eq('id',EDIT_ONOTE).select('id')
+    : await sb.from('operator_notes').insert(payload).select('id');
+  btn.disabled=false; btn.textContent='Salva';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(!data||!data.length){ msg.textContent='Non hai i permessi per modificare questa nota.'; msg.className='msg err'; return; }
+  el('modal-onote').classList.remove('open'); EDIT_ONOTE=null;
+  loadOperatorNotes();
+}
+async function delOperatorNote(id){
+  const n=ONOTES.find(x=>x.id===id);
+  if(!confirm('Eliminare la nota "'+(n?n.titolo:'')+'"?')) return;
+  const {data,error}=await sb.from('operator_notes').delete().eq('id',id).select('id');
+  if(error){ alert('Errore: '+error.message); return; }
+  if(!data||!data.length){ alert('Non hai i permessi per eliminare questa nota.'); return; }
+  loadOperatorNotes();
 }
 
 // ---------- CALENDARIO PRENOTAZIONI ----------
@@ -2691,6 +2776,8 @@ el('sr-cancel').addEventListener('click', ()=>{ el('modal-selfrep').classList.re
 el('sr-save').addEventListener('click', saveSelfRep);
 el('cn-cancel').addEventListener('click', ()=>{ el('modal-cnote').classList.remove('open'); EDIT_CNOTE=null; });
 el('cn-save').addEventListener('click', saveCompanyNote);
+el('on-cancel').addEventListener('click', ()=>{ el('modal-onote').classList.remove('open'); EDIT_ONOTE=null; });
+el('on-save').addEventListener('click', saveOperatorNote);
 el('mm-cnote').addEventListener('click', ()=>openCompanyNoteFromMeeting([CURRENT_PERSON_OBJ&&CURRENT_PERSON_OBJ.company_id]));
 el('tmm-cnote').addEventListener('click', async ()=>{
   const {data}=await sb.rpc('team_members_light',{p_team_id:CURRENT_TEAM});
@@ -2702,7 +2789,7 @@ el('fam-save').addEventListener('click', saveFamily);
 el('q-cancel').addEventListener('click', ()=>{ el('modal-question').classList.remove('open'); EDIT_Q=null; });
 el('q-save').addEventListener('click', saveQuestion);
 el('mcal-save').addEventListener('click', saveCalendar);
-[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar'],['modal-cnote'],['modal-family'],['modal-question']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar'],['modal-cnote'],['modal-onote'],['modal-family'],['modal-question']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
 el('modal-team-member').addEventListener('click', e=>{ if(e.target===el('modal-team-member')) closeTeamMemberModal(); });
 
 // ══════════════════════════════════════════════════════════════════════════

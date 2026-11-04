@@ -564,5 +564,23 @@ alter table public.person_family    enable row level security;
 alter table public.person_questions enable row level security;
 
 -- ============================================================================
+-- NOTE OPERATORE — taccuino personale di chi usa GESPP (voce "Note" nel menu).
+-- Ogni nota è visibile SOLO al suo autore, admin compreso: nessun legame con
+-- aziende, persone o dati sanitari. autore_id e date li scrive il trigger
+-- operator_notes_stamp (file 2), mai il frontend.
+-- ----------------------------------------------------------------------------
+create table if not exists public.operator_notes (
+    id          uuid primary key default gen_random_uuid(),
+    autore_id   uuid not null references public.app_users(id) on delete cascade,
+    titolo      text not null,
+    corpo       text,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz
+);
+create index if not exists idx_operator_notes_autore on public.operator_notes(autore_id);
+
+alter table public.operator_notes enable row level security;
+
+-- ============================================================================
 --  FINE FILE 1. Procedere con gespp_2_funzioni_policy.sql
 -- ============================================================================

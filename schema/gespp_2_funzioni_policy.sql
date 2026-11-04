@@ -889,5 +889,46 @@ create trigger trg_audit_person_questions after insert or update or delete on pu
 grant select, insert, update on public.person_family, public.person_questions to authenticated;
 
 -- ============================================================================
+--  NOTE OPERATORE (operator_notes, tabella nel file 1)
+-- ============================================================================
+-- Timbro lato DB: il frontend manda solo titolo/corpo. In update autore e
+-- data di creazione restano quelli originali.
+create or replace function public.operator_notes_stamp()
+returns trigger language plpgsql set search_path = public
+as $$
+begin
+    if TG_OP = 'INSERT' then
+        NEW.autore_id  := auth.uid();
+        NEW.created_at := now();
+        NEW.updated_at := null;
+    else
+        NEW.autore_id  := OLD.autore_id;
+        NEW.created_at := OLD.created_at;
+        NEW.updated_at := now();
+    end if;
+    return NEW;
+end; $$;
+
+drop trigger if exists trg_operator_notes_stamp on public.operator_notes;
+create trigger trg_operator_notes_stamp before insert or update on public.operator_notes
+    for each row execute function public.operator_notes_stamp();
+
+-- Audit SENSITIVE di proposito: registra chi/quando/quali campi, MAI il
+-- testo. Con 'full' il contenuto finirebbe in audit_log, leggibile da altri.
+drop trigger if exists trg_audit_operator_notes on public.operator_notes;
+create trigger trg_audit_operator_notes after insert or update or delete on public.operator_notes
+    for each row execute function public.fn_audit_write('sensitive');
+
+-- Solo l'autore, per ogni operazione, admin compreso. Nessun can_write():
+-- anche il consulente_limitato può tenere le proprie note.
+drop policy if exists operator_notes_own on public.operator_notes;
+create policy operator_notes_own on public.operator_notes
+    for all using ( autore_id = auth.uid() )
+    with check ( autore_id = auth.uid() );
+
+-- Grant espliciti (da 2026-10-30 Supabase non li concede più in automatico).
+grant select, insert, update, delete on public.operator_notes to authenticated;
+
+-- ============================================================================
 --  FINE FILE 2. Procedere con gespp_3_dati_iniziali.sql
 -- ============================================================================
