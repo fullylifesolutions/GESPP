@@ -266,16 +266,27 @@
   <div id="tp-calc-res" style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;"></div>
   <div class="grid2">
     <div><label>Km sola andata</label><input type="number" id="tp-km" min="0" step="0.1"></div>
-    <div><label>Tariffa ACI €/km</label><input type="number" id="tp-tariffa" min="0" step="0.0001" placeholder="0.5320"></div>
+    <div><label>Pedaggio sola andata €</label><input type="number" id="tp-pedaggio" min="0" step="0.01"></div>
   </div>
   <div class="chk-row" style="margin-bottom:14px;"><input type="checkbox" id="tp-ar" checked><label for="tp-ar" style="margin:0;color:var(--ink);">Andata e ritorno (km × 2)</label></div>
-  <div class="grid2">
-    <div><label>Pedaggio sola andata €</label><input type="number" id="tp-pedaggio" min="0" step="0.01"></div>
-    <div><label>Veicolo</label><input type="text" id="tp-veicolo"></div>
+  <label>Veicolo</label><select id="tp-vehicle"></select>
+  <div id="tp-manual" class="grid2">
+    <div><label>Veicolo (testo)</label><input type="text" id="tp-veicolo"></div>
+    <div><label>Tariffa ACI €/km</label><input type="number" id="tp-tariffa" min="0" step="0.0001" placeholder="0.5320"></div>
   </div>
-  <p style="font-size:11px;color:var(--ink-soft);margin:-6px 0 12px;">Il pedaggio va inserito a mano: verificalo su <a href="https://moveo.telepass.com/calcolo-pedaggio/" target="_blank" rel="noopener">Moveo</a>. Tariffa €/km su <a href="https://costikm.aci.it/" target="_blank" rel="noopener">costikm.aci.it</a>.</p>
+  <p style="font-size:11px;color:var(--ink-soft);margin:-6px 0 12px;">Il pedaggio va inserito a mano: verificalo su <a href="https://moveo.telepass.com/calcolo-pedaggio/" target="_blank" rel="noopener">Moveo</a>. Con un veicolo scelto la tariffa è sempre quella aggiornata del veicolo.</p>
   <label>Note</label><textarea id="tp-note" rows="2"></textarea>
   <div class="modal-actions"><button class="ghost" id="tp-cancel">Annulla</button><button class="primary" id="tp-save">Salva</button></div>
+</div></div>
+
+<!-- MODAL VEICOLO DEL CONSULENTE (travel_vehicles) -->
+<div class="modal-bg" id="modal-tveh"><div class="modal">
+  <h3 id="tv-title">Nuovo veicolo</h3><div id="tv-msg" class="msg"></div>
+  <label>Veicolo *</label><input type="text" id="tv-nome" placeholder="es. Fiat Panda 1.2 benzina">
+  <label>Tariffa ACI €/km *</label><input type="number" id="tv-tariffa" min="0" step="0.0001" placeholder="0.5320">
+  <div class="chk-row" style="margin-bottom:14px;"><input type="checkbox" id="tv-pred"><label for="tv-pred" style="margin:0;color:var(--ink);">Veicolo predefinito per le nuove trasferte</label></div>
+  <p style="font-size:11px;color:var(--ink-soft);margin:-6px 0 12px;">Tariffa €/km su <a href="https://costikm.aci.it/" target="_blank" rel="noopener">costikm.aci.it</a>. Aggiornarla non cambia le trasferte già registrate.</p>
+  <div class="modal-actions"><button class="ghost" id="tv-cancel">Annulla</button><button class="primary" id="tv-save">Salva</button></div>
 </div></div>
 
 <!-- MODAL NOTA AZIENDA -->
@@ -1431,6 +1442,21 @@ async function delOperatorNote(id){
 // manuale di proposito: HERE sovrastima in modo irregolare rispetto a Moveo.
 const TR_VOCI=[['pedaggi','Pedaggi'],['parcheggi','Parcheggi'],['trasporti','Treni/aerei/taxi'],['vitto','Vitto'],['alloggio','Alloggio'],['altre','Altre spese']];
 let TR_COMPANIES=[], TR_PROFILES=[], TR_TRIPS=[], EDIT_TPROF=null, TR_EDIT=null;
+// Veicoli del consulente (travel_vehicles): la scheda punta al veicolo e usa
+// sempre la sua tariffa attuale; la trasferta ne salva una COPIA (veicolo,
+// tariffa_km), così aggiornare l'ACI non cambia le trasferte già fatte.
+let TR_VEHICLES=[], EDIT_TVEH=null;
+function trVehicle(id){ return TR_VEHICLES.find(v=>v.id===id)||null; }
+function trVehicleLabel(v){ return `${v.nome} — € ${Number(v.tariffa_km).toFixed(4).replace('.',',')}/km`; }
+function trVehicleOptions(sel){
+  return TR_VEHICLES.map(v=>`<option value="${v.id}"${v.id===sel?' selected':''}>${escapeHtml(trVehicleLabel(v))}${v.predefinito?' ★':''}</option>`).join('')
+    +`<option value=""${!sel?' selected':''}>— Altro (inserisci a mano) —</option>`;
+}
+async function trLoadVehicles(){
+  const {data,error}=await sb.from('travel_vehicles').select('*').order('nome');
+  if(error){ TR_VEHICLES=[]; return error; }
+  TR_VEHICLES=data||[]; return null;
+}
 // arrotondamento al centesimo senza errori di virgola mobile (65.435 → 65.44, come round() di Postgres)
 function trR2(v){ const n=Number(v)||0; return Number(Math.round(n+'e2')+'e-2'); }
 function trEur(v){ return '€ '+trR2(v).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -1490,14 +1516,62 @@ async function viewTrasferte(){
     <div class="row-head"><div style="flex:1;"><h2 class="panel-title">Trasferte</h2>
     <p class="panel-sub">Le tue schede cliente e le tue trasferte. Le spese si inseriscono poi in fattura dal gestionale.</p></div>
     <button class="primary" id="tr-new">+ Trasferta</button></div>
+    <div class="section"><div class="sh"><span class="st">I miei veicoli</span><button class="primary small" id="tv-new">+ Veicolo</button></div>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px;">Tariffa ACI €/km per ogni veicolo: aggiornala qui ogni anno, le schede cliente la usano subito.</p>
+      <div id="tv-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Schede cliente</span><button class="primary small" id="tp-new">+ Scheda</button></div>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px;">Percorso, km e pedaggio abituali verso un cliente: si compilano una volta e precompilano ogni nuova trasferta.</p>
       <div id="tp-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Le mie trasferte</span></div><div id="tr-list"><div class="spinner">Caricamento…</div></div></div>`;
   el('tr-new').addEventListener('click',()=>openTripEditor(null,null));
   el('tp-new').addEventListener('click',()=>openTravelProfileModal(null));
-  await trLoadCompanies();
+  el('tv-new').addEventListener('click',()=>openTravelVehicleModal(null));
+  await Promise.all([trLoadCompanies(), trLoadVehicles()]);
+  renderTravelVehicles();
   await Promise.all([loadTravelProfiles(), loadTrips()]);
+}
+
+// ── veicoli ──
+function renderTravelVehicles(){
+  const box=el('tv-list'); if(!box) return;
+  if(!TR_VEHICLES.length){ box.innerHTML='<div class="empty" style="padding:14px;">Nessun veicolo. Usa "+ Veicolo" per inserire il tuo con la tariffa ACI.</div>'; return; }
+  box.innerHTML=TR_VEHICLES.map(v=>`<div class="sub-item"><div class="li-ic">🚙</div>
+    <div class="m"><div style="font-weight:600;">${escapeHtml(v.nome)}${v.predefinito?' <span class="tag-main">predefinito</span>':''}</div>
+    <div class="d">€ ${Number(v.tariffa_km).toFixed(4).replace('.',',')} al km${v.updated_at?' · aggiornato il '+fmtDateTime(v.updated_at):''}</div></div>
+    <button class="ghost small tv-edit" data-id="${v.id}">Modifica</button> <button class="ghost small danger tv-del" data-id="${v.id}">Elimina</button></div>`).join('');
+  box.querySelectorAll('.tv-edit').forEach(b=>b.addEventListener('click',()=>openTravelVehicleModal(b.dataset.id)));
+  box.querySelectorAll('.tv-del').forEach(b=>b.addEventListener('click',()=>delTravelVehicle(b.dataset.id)));
+}
+function openTravelVehicleModal(id){
+  EDIT_TVEH=id; el('tv-msg').className='msg';
+  const v=id?trVehicle(id):null;
+  el('tv-title').textContent=v?'Modifica veicolo':'Nuovo veicolo';
+  el('tv-nome').value=v?v.nome:''; el('tv-tariffa').value=v?v.tariffa_km:'';
+  el('tv-pred').checked=v?v.predefinito:!TR_VEHICLES.length; // il primo veicolo è predefinito
+  el('modal-tveh').classList.add('open'); el('tv-nome').focus();
+}
+async function saveTravelVehicle(){
+  const msg=el('tv-msg'); msg.className='msg';
+  const nome=el('tv-nome').value.trim(), tar=parseFloat(el('tv-tariffa').value);
+  if(!nome||!(tar>=0)||el('tv-tariffa').value===''){ msg.textContent='Nome e tariffa €/km sono obbligatori.'; msg.className='msg err'; return; }
+  const payload={nome, tariffa_km:tar, predefinito:el('tv-pred').checked};
+  const btn=el('tv-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const {data,error}=EDIT_TVEH
+    ? await sb.from('travel_vehicles').update(payload).eq('id',EDIT_TVEH).select('id')
+    : await sb.from('travel_vehicles').insert(payload).select('id');
+  btn.disabled=false; btn.textContent='Salva';
+  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(!data||!data.length){ msg.textContent='Non hai i permessi per modificare questo veicolo.'; msg.className='msg err'; return; }
+  el('modal-tveh').classList.remove('open'); EDIT_TVEH=null;
+  await trLoadVehicles(); renderTravelVehicles(); loadTravelProfiles();
+}
+async function delTravelVehicle(id){
+  const v=trVehicle(id);
+  if(!confirm('Eliminare il veicolo "'+(v?v.nome:'')+'"?\n\nLe trasferte già registrate mantengono nome e tariffa. Le schede cliente che lo usano resteranno senza veicolo: andranno riaperte per sceglierne un altro.')) return;
+  const {data,error}=await sb.from('travel_vehicles').delete().eq('id',id).select('id');
+  if(error){ alert('Errore: '+error.message); return; }
+  if(!data||!data.length){ alert('Non hai i permessi per eliminare questo veicolo.'); return; }
+  await trLoadVehicles(); renderTravelVehicles(); loadTravelProfiles();
 }
 
 async function loadTravelProfiles(){
@@ -1509,9 +1583,11 @@ async function loadTravelProfiles(){
   if(!TR_PROFILES.length){ box.innerHTML='<div class="empty" style="padding:14px;">Nessuna scheda. Usa "+ Scheda" per salvare il percorso abituale verso un cliente.</div>'; return; }
   box.innerHTML=TR_PROFILES.map(p=>{
     const km=p.km_andata!=null?`${String(p.km_andata).replace('.',',')} km${p.andata_ritorno?' × 2 (A/R)':''}`:'km non indicati';
+    const veh=trVehicle(p.vehicle_id);
+    const vehTxt=veh?veh.nome:(p.veicolo||'');
     return `<div class="sub-item"><div class="li-ic">🚗</div>
       <div class="m"><div style="font-weight:600;">${escapeHtml(trCompName(p.company_id))}</div>
-      <div class="d">${escapeHtml(p.partenza)} → ${escapeHtml(p.destinazione)} · ${km}${p.pedaggio_andata?' · pedaggio '+trEur(p.pedaggio_andata)+' a tratta':''}</div></div>
+      <div class="d">${escapeHtml(p.partenza)} → ${escapeHtml(p.destinazione)} · ${km}${p.pedaggio_andata?' · pedaggio '+trEur(p.pedaggio_andata)+' a tratta':''}${vehTxt?' · '+escapeHtml(vehTxt):''}</div></div>
       <button class="primary small tp-trip" data-id="${p.id}">Nuova trasferta</button>
       <button class="ghost small tp-edit" data-id="${p.id}">Modifica</button> <button class="ghost small danger tp-del" data-id="${p.id}">Elimina</button></div>`;
   }).join('');
@@ -1549,11 +1625,18 @@ function openTravelProfileModal(id){
   el('tp-partenza').value=p?p.partenza:''; el('tp-destinazione').value=p?p.destinazione:'';
   el('tp-km').value=p&&p.km_andata!=null?p.km_andata:''; el('tp-ar').checked=p?p.andata_ritorno:true;
   el('tp-tariffa').value=p&&p.tariffa_km!=null?p.tariffa_km:''; el('tp-veicolo').value=p?(p.veicolo||''):'';
+  // scheda nuova: veicolo predefinito; scheda esistente senza veicolo (vecchia o
+  // "a mano"): resta su "Altro" con i valori scritti a mano
+  const pred=TR_VEHICLES.find(v=>v.predefinito);
+  el('tp-vehicle').innerHTML=trVehicleOptions(p?(trVehicle(p.vehicle_id)?p.vehicle_id:''):(pred?pred.id:''));
+  trProfileVehicleToggle();
   el('tp-pedaggio').value=p&&p.pedaggio_andata!=null?p.pedaggio_andata:''; el('tp-note').value=p?(p.note||''):'';
   el('tp-calc-res').dataset.caselli=p?(p.caselli||''):'';
   el('tp-calc-res').innerHTML=p&&p.caselli?'Caselli: '+escapeHtml(p.caselli):'';
   el('modal-tprof').classList.add('open');
 }
+// con un veicolo scelto i campi a mano spariscono: la tariffa è quella del veicolo
+function trProfileVehicleToggle(){ el('tp-manual').style.display=el('tp-vehicle').value?'none':''; }
 async function calcTravelProfileRoute(){
   const res=el('tp-calc-res'), btn=el('tp-calc');
   const da=el('tp-partenza').value.trim(), a=el('tp-destinazione').value.trim();
@@ -1572,9 +1655,12 @@ async function saveTravelProfile(){
   const company_id=el('tp-company').value, partenza=el('tp-partenza').value.trim(), destinazione=el('tp-destinazione').value.trim();
   if(!company_id||!partenza||!destinazione){ msg.textContent='Azienda, partenza e destinazione sono obbligatorie.'; msg.className='msg err'; return; }
   const numOrNull=id=>{ const v=el(id).value; return v===''?null:Math.max(0,parseFloat(v)||0); };
-  const payload={company_id, partenza, destinazione,
-    km_andata:numOrNull('tp-km'), andata_ritorno:el('tp-ar').checked, tariffa_km:numOrNull('tp-tariffa'),
-    pedaggio_andata:numOrNull('tp-pedaggio'), veicolo:el('tp-veicolo').value.trim()||null,
+  const vehicle_id=el('tp-vehicle').value||null;
+  // con un veicolo la scheda NON salva tariffa/nome: li legge sempre dal veicolo
+  const payload={company_id, partenza, destinazione, vehicle_id,
+    km_andata:numOrNull('tp-km'), andata_ritorno:el('tp-ar').checked,
+    tariffa_km:vehicle_id?null:numOrNull('tp-tariffa'),
+    pedaggio_andata:numOrNull('tp-pedaggio'), veicolo:vehicle_id?null:(el('tp-veicolo').value.trim()||null),
     caselli:el('tp-calc-res').dataset.caselli||null, note:el('tp-note').value.trim()||null};
   const btn=el('tp-save'); btn.disabled=true; btn.textContent='Salvataggio…';
   // .select() per accorgersi di un update negato dalla RLS (0 righe, nessun errore)
@@ -1601,6 +1687,7 @@ async function delTravelProfile(id){
 // cambi di data, così allungare/accorciare la trasferta non perde gli importi.
 async function openTripEditor(tripId, profileId){
   if(!TR_COMPANIES.length) await trLoadCompanies();
+  await trLoadVehicles();
   let t=null;
   if(tripId){
     const {data,error}=await sb.from('travel_trips').select('*, travel_trip_days(*), companies(ragione_sociale)').eq('id',tripId).single();
@@ -1611,6 +1698,15 @@ async function openTripEditor(tripId, profileId){
   if(!t&&!TR_COMPANIES.length){ alert(ME.ruolo==='admin'?'Nessuna azienda presente.':'Non hai aziende assegnate: chiedi all\'amministratore di assegnartele.'); return; }
   const oggi=localToday();
   const src=t||p||{};
+  // Veicolo: trasferta esistente → la sua COPIA di nome/tariffa (mai riletta dal
+  // veicolo); nuova da scheda → veicolo della scheda con la tariffa attuale;
+  // nuova senza veicolo → predefinito, salvo scheda vecchia con tariffa a mano.
+  let veh={id:'', nome:src.veicolo||'', tariffa:src.tariffa_km};
+  if(t){ veh.id=trVehicle(t.vehicle_id)?t.vehicle_id:''; }
+  else {
+    const v=(p&&trVehicle(p.vehicle_id)) || ((!p||p.tariffa_km==null)?TR_VEHICLES.find(x=>x.predefinito):null);
+    if(v) veh={id:v.id, nome:v.nome, tariffa:v.tariffa_km};
+  }
   TR_EDIT={id:t?t.id:null, locked:!!(t&&t.invoice_id), days:{}};
   (t?t.travel_trip_days||[]:[]).forEach(d=>{ TR_EDIT.days[d.giorno]=d; });
   const dis=TR_EDIT.locked?' disabled':'';
@@ -1642,12 +1738,14 @@ async function openTripEditor(tripId, profileId){
       <div id="tr-calc-res" style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;" data-caselli="${escapeHtml(src.caselli||'')}">${src.caselli?'Caselli: '+escapeHtml(src.caselli):''}</div>
       <div class="grid2">
         <div><label>Km sola andata</label><input type="number" id="tr-km" min="0" step="0.1" value="${src.km_andata!=null?src.km_andata:''}"${dis}></div>
-        <div><label>Tariffa ACI €/km</label><input type="number" id="tr-tariffa" min="0" step="0.0001" placeholder="0.5320" value="${src.tariffa_km!=null?src.tariffa_km:''}"${dis}></div>
+        <div class="chk-row" style="margin:26px 0 14px;"><input type="checkbox" id="tr-ar"${(src.andata_ritorno===false)?'':' checked'}${dis}><label for="tr-ar" style="margin:0;color:var(--ink);">Andata e ritorno (km × 2)</label></div>
       </div>
+      <label>Veicolo</label><select id="tr-vehicle"${dis}>${trVehicleOptions(veh.id)}</select>
       <div class="grid2">
-        <div class="chk-row" style="margin-bottom:14px;"><input type="checkbox" id="tr-ar"${(src.andata_ritorno===false)?'':' checked'}${dis}><label for="tr-ar" style="margin:0;color:var(--ink);">Andata e ritorno (km × 2)</label></div>
-        <div><label>Veicolo</label><input type="text" id="tr-veicolo" value="${escapeHtml(src.veicolo||'')}"${dis}></div>
+        <div><label>Veicolo (testo)</label><input type="text" id="tr-veicolo" value="${escapeHtml(veh.nome||'')}"${dis}></div>
+        <div><label>Tariffa ACI €/km</label><input type="number" id="tr-tariffa" min="0" step="0.0001" placeholder="0.5320" value="${veh.tariffa!=null?veh.tariffa:''}"${dis}></div>
       </div>
+      <p style="font-size:11px;color:var(--ink-soft);margin:-6px 0 0;">Nome e tariffa vengono salvati nella trasferta: aggiornare in seguito il veicolo non cambia questa trasferta.</p>
     </div>
     <div class="section"><div class="sh"><span class="st">🧾 Spese giorno per giorno</span></div>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px;">Una riga per ogni giorno della trasferta. Pedaggi: importo reale (ricevuta o <a href="https://moveo.telepass.com/calcolo-pedaggio/" target="_blank" rel="noopener">Moveo</a>).</p>
@@ -1668,13 +1766,15 @@ async function openTripEditor(tripId, profileId){
     el('tr-calc').addEventListener('click',trCalcTripRoute);
     ['tr-dp','tr-dr'].forEach(id=>el(id).addEventListener('change',trOnDatesChange));
     ['tr-km','tr-tariffa','tr-ar'].forEach(id=>el(id).addEventListener('input',trRenderSummary));
-    el('tr-ar').addEventListener('change',trRenderSummary);
+    el('tr-vehicle').addEventListener('change',trApplyVehicle);
+    el('tr-ar').addEventListener('change',trOnArChange);
     el('tr-save').addEventListener('click',saveTrip);
     if(t) el('tr-del').addEventListener('click',()=>delTrip(t.id));
   }
   TR_EDIT.range=trDateRange(el('tr-dp').value, el('tr-dr').value);
-  // nuova trasferta da scheda: pedaggio all'andata il primo giorno, al ritorno l'ultimo
-  if(p) trPrefillPedaggi(p);
+  // nuova trasferta da scheda: pedaggio automatico (vedi trPrefillPedaggi)
+  TR_EDIT.autoPed=p?(trR2(p.pedaggio_andata)||null):null;
+  trPrefillPedaggi();
   trRenderDays();
 }
 function trRenderProfileOptions(sel){
@@ -1682,22 +1782,43 @@ function trRenderProfileOptions(sel){
   const prof=TR_PROFILES.filter(x=>x.company_id===cid);
   el('tr-profile').innerHTML='<option value="">— Nessuna —</option>'+prof.map(x=>`<option value="${x.id}"${x.id===sel?' selected':''}>${escapeHtml(x.partenza)} → ${escapeHtml(x.destinazione)}</option>`).join('');
 }
+// veicolo scelto → copia nome e tariffa attuali nei campi (restano modificabili)
+function trApplyVehicle(){
+  const v=trVehicle(el('tr-vehicle').value); if(!v) return;
+  el('tr-veicolo').value=v.nome; el('tr-tariffa').value=v.tariffa_km;
+  trRenderSummary();
+}
 function trApplyProfile(){
   const p=TR_PROFILES.find(x=>x.id===el('tr-profile').value); if(!p) return;
   el('tr-da').value=p.partenza; el('tr-a').value=p.destinazione;
-  el('tr-km').value=p.km_andata!=null?p.km_andata:''; el('tr-tariffa').value=p.tariffa_km!=null?p.tariffa_km:'';
-  el('tr-ar').checked=p.andata_ritorno; el('tr-veicolo').value=p.veicolo||'';
+  el('tr-km').value=p.km_andata!=null?p.km_andata:''; el('tr-ar').checked=p.andata_ritorno;
+  if(trVehicle(p.vehicle_id)){ el('tr-vehicle').value=p.vehicle_id; trApplyVehicle(); }
+  else if(p.tariffa_km!=null||p.veicolo){ el('tr-vehicle').value=''; el('tr-tariffa').value=p.tariffa_km!=null?p.tariffa_km:''; el('tr-veicolo').value=p.veicolo||''; }
   el('tr-calc-res').dataset.caselli=p.caselli||''; el('tr-calc-res').innerHTML=p.caselli?'Caselli: '+escapeHtml(p.caselli):'';
   trCollectDays();
-  // precompila i pedaggi solo se non ne è ancora stato inserito nessuno
-  if(!TR_EDIT.range.some(g=>TR_EDIT.days[g]&&trR2(TR_EDIT.days[g].pedaggi)>0)) trPrefillPedaggi(p);
+  // pedaggio automatico solo se non ne è stato scritto nessuno a mano
+  if(TR_EDIT.autoPed||!TR_EDIT.range.some(g=>TR_EDIT.days[g]&&trR2(TR_EDIT.days[g].pedaggi)>0)){
+    TR_EDIT.autoPed=trR2(p.pedaggio_andata)||null;
+    trPrefillPedaggi();
+  }
   trRenderDays();
 }
-function trPrefillPedaggi(p){
-  const ped=trR2(p.pedaggio_andata); if(!ped||!TR_EDIT.range.length) return;
+// Pedaggio automatico dalla scheda (TR_EDIT.autoPed = pedaggio di sola andata):
+// andata sul primo giorno, ritorno sull'ultimo (stesso giorno = × 2). Finché
+// l'utente non scrive a mano un pedaggio si RICALCOLA a ogni cambio di date o
+// della spunta A/R: prima le date partivano da oggi-oggi, il pedaggio veniva
+// raddoppiato sul primo giorno e restava lì anche allungando la trasferta.
+// Al primo pedaggio scritto a mano autoPed diventa null e non si tocca più nulla.
+function trPrefillPedaggi(){
+  const ped=TR_EDIT.autoPed; if(!ped||!TR_EDIT.range.length) return;
+  Object.keys(TR_EDIT.days).forEach(g=>{ TR_EDIT.days[g]={...TR_EDIT.days[g], pedaggi:0}; });
   const first=TR_EDIT.range[0], last=TR_EDIT.range[TR_EDIT.range.length-1];
   TR_EDIT.days[first]={...(TR_EDIT.days[first]||{}), pedaggi:ped};
-  if(p.andata_ritorno) TR_EDIT.days[last]={...(TR_EDIT.days[last]||{}), pedaggi:trR2((first===last?ped:trR2(TR_EDIT.days[last]&&TR_EDIT.days[last].pedaggi))+ped)};
+  if(el('tr-ar').checked) TR_EDIT.days[last]={...(TR_EDIT.days[last]||{}), pedaggi:trR2(trR2((TR_EDIT.days[last]||{}).pedaggi)+ped)};
+}
+function trOnArChange(){
+  if(TR_EDIT.autoPed){ trCollectDays(); trPrefillPedaggi(); trRenderDays(); }
+  else trRenderSummary();
 }
 async function trCalcTripRoute(){
   const res=el('tr-calc-res'), btn=el('tr-calc');
@@ -1727,11 +1848,13 @@ function trOnDatesChange(){
   if(dp&&dr&&dr<dp){ el('tr-dr').value=dp; }
   const nuovo=trDateRange(el('tr-dp').value, el('tr-dr').value);
   if(nuovo.length>61){ alert('Una trasferta può durare al massimo 61 giorni.'); el('tr-dr').value=TR_EDIT.range[TR_EDIT.range.length-1]||dp; return; }
-  const persi=TR_EDIT.range.filter(g=>!nuovo.includes(g)&&TR_EDIT.days[g]&&trDayTotal(TR_EDIT.days[g])>0);
+  // i pedaggi automatici non contano: vengono ricalcolati sulle nuove date
+  const persi=TR_EDIT.range.filter(g=>!nuovo.includes(g)&&TR_EDIT.days[g]&&trR2(trDayTotal(TR_EDIT.days[g])-(TR_EDIT.autoPed?trR2(TR_EDIT.days[g].pedaggi):0))>0);
   if(persi.length&&!confirm('Con le nuove date escono dalla trasferta giorni con spese già inserite ('+persi.map(fmtDate).join(', ')+').\n\nQueste spese non verranno salvate. Continuare?')){
     el('tr-dp').value=TR_EDIT.range[0]; el('tr-dr').value=TR_EDIT.range[TR_EDIT.range.length-1]; return;
   }
   TR_EDIT.range=nuovo;
+  trPrefillPedaggi();
   trRenderDays();
 }
 function trRenderDays(){
@@ -1748,6 +1871,7 @@ function trRenderDays(){
         <td style="${cell}text-align:right;font-weight:600;white-space:nowrap;" id="tr-dtot-${g}">${trEur(trDayTotal(d))}</td></tr>`;
     }).join('')}</tbody>`;
   el('tr-days').querySelectorAll('input[data-g]').forEach(i=>i.addEventListener('input',()=>{
+    if(i.dataset.k==='pedaggi') TR_EDIT.autoPed=null;
     trCollectDays();
     const c=el('tr-dtot-'+i.dataset.g); if(c) c.textContent=trEur(trDayTotal(TR_EDIT.days[i.dataset.g]));
     trRenderSummary();
@@ -1771,7 +1895,7 @@ async function saveTrip(){
   const partenza=el('tr-da').value.trim(), destinazione=el('tr-a').value.trim();
   if(!company_id||!dp||!dr||!partenza||!destinazione){ msg.textContent='Azienda, date, partenza e destinazione sono obbligatorie.'; msg.className='msg err'; window.scrollTo(0,0); return; }
   if(dr<dp){ msg.textContent='Il giorno di rientro non può precedere quello di partenza.'; msg.className='msg err'; window.scrollTo(0,0); return; }
-  const p_trip={id:TR_EDIT.id, company_id, profile_id:el('tr-profile').value||null, data_partenza:dp, data_rientro:dr,
+  const p_trip={id:TR_EDIT.id, company_id, profile_id:el('tr-profile').value||null, vehicle_id:el('tr-vehicle').value||null, data_partenza:dp, data_rientro:dr,
     partenza, destinazione, km_andata:Math.max(0,parseFloat(el('tr-km').value)||0), andata_ritorno:el('tr-ar').checked,
     tariffa_km:Math.max(0,parseFloat(el('tr-tariffa').value)||0), veicolo:el('tr-veicolo').value.trim(),
     caselli:el('tr-calc-res').dataset.caselli||'', descrizione:el('tr-desc').value.trim()};
@@ -3175,6 +3299,9 @@ el('on-save').addEventListener('click', saveOperatorNote);
 el('tp-cancel').addEventListener('click', ()=>{ el('modal-tprof').classList.remove('open'); EDIT_TPROF=null; });
 el('tp-save').addEventListener('click', saveTravelProfile);
 el('tp-calc').addEventListener('click', calcTravelProfileRoute);
+el('tp-vehicle').addEventListener('change', trProfileVehicleToggle);
+el('tv-cancel').addEventListener('click', ()=>{ el('modal-tveh').classList.remove('open'); EDIT_TVEH=null; });
+el('tv-save').addEventListener('click', saveTravelVehicle);
 el('mm-cnote').addEventListener('click', ()=>openCompanyNoteFromMeeting([CURRENT_PERSON_OBJ&&CURRENT_PERSON_OBJ.company_id]));
 el('tmm-cnote').addEventListener('click', async ()=>{
   const {data}=await sb.rpc('team_members_light',{p_team_id:CURRENT_TEAM});

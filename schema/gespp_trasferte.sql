@@ -420,3 +420,170 @@ grant  execute on function public.travel_trip_save(jsonb, jsonb)         to auth
 grant  execute on function public.travel_trip_link_invoice(uuid, uuid)   to authenticated;
 grant  execute on function public.travel_trip_unlink_invoice(uuid)       to authenticated;
 grant  execute on function public.travel_trip_move_invoice(uuid, uuid)   to authenticated;
+
+
+-- ============================================================================
+--  TRASFERTE — VEICOLI DEL CONSULENTE (aggiunta 2026-11-14)
+--  Da eseguire DOPO trasferte.sql (su TEST, poi su PROD). Rieseguibile.
+--
+--  travel_vehicles: i veicoli di ogni consulente con la tariffa ACI €/km.
+--  - La SCHEDA cliente punta al veicolo (vehicle_id) e NON memorizza la
+--    tariffa: aggiornata la tariffa ACI del veicolo (ogni anno), tutte le
+--    schede usano subito quella nuova.
+--  - La TRASFERTA punta al veicolo ma conserva una COPIA di nome e tariffa
+--    (colonne veicolo/tariffa_km già esistenti): aggiornare il veicolo non
+--    cambia le trasferte e le note spese già fatte.
+--  Visibili e modificabili solo dal proprietario (admin compreso).
+-- ============================================================================
+
+create table if not exists public.travel_vehicles (
+    id           uuid primary key default gen_random_uuid(),
+    owner_id     uuid not null references public.app_users(id) on delete cascade,
+    nome         text not null,
+    tariffa_km   numeric(6,4) not null check (tariffa_km >= 0),
+    predefinito  boolean not null default false,
+    created_at   timestamptz not null default now(),
+    updated_at   timestamptz
+);
+create index if not exists idx_travel_vehicles_owner on public.travel_vehicles(owner_id);
+-- al massimo un veicolo predefinito per consulente
+create unique index if not exists uq_travel_vehicles_predefinito
+    on public.travel_vehicles(owner_id) where predefinito;
+
+alter table public.travel_vehicles enable row level security;
+
+-- veicolo usato da scheda e trasferta: se il veicolo viene eliminato il
+-- riferimento si azzera, la copia nome/tariffa nella trasferta resta.
+alter table public.travel_profiles add column if not exists vehicle_id uuid references public.travel_vehicles(id) on delete set null;
+alter table public.travel_trips    add column if not exists vehicle_id uuid references public.travel_vehicles(id) on delete set null;
+
+-- Timbro + unico predefinito: impostare un veicolo come predefinito toglie il
+-- flag agli altri dello stesso consulente PRIMA di scrivere la riga (così
+-- l'indice unico parziale non scatta).
+create or replace function public.travel_vehicles_stamp()
+returns trigger language plpgsql set search_path = public
+as $$
+begin
+    if TG_OP = 'INSERT' then
+        NEW.owner_id   := auth.uid();
+        NEW.created_at := now();
+        NEW.updated_at := null;
+    else
+        NEW.owner_id   := OLD.owner_id;
+        NEW.created_at := OLD.created_at;
+        NEW.updated_at := now();
+    end if;
+    if NEW.predefinito then
+        update public.travel_vehicles
+           set predefinito = false
+         where owner_id = NEW.owner_id and predefinito and id <> NEW.id;
+    end if;
+    return NEW;
+end; $$;
+
+drop trigger if exists trg_travel_vehicles_stamp on public.travel_vehicles;
+create trigger trg_travel_vehicles_stamp before insert or update on public.travel_vehicles
+    for each row execute function public.travel_vehicles_stamp();
+
+drop trigger if exists trg_audit_travel_vehicles on public.travel_vehicles;
+create trigger trg_audit_travel_vehicles after insert or update or delete on public.travel_vehicles
+    for each row execute function public.fn_audit_write('full');
+
+drop policy if exists travel_vehicles_own on public.travel_vehicles;
+create policy travel_vehicles_own on public.travel_vehicles
+    for all using ( owner_id = auth.uid() )
+    with check ( owner_id = auth.uid() );
+
+-- Schede e trasferte possono puntare solo a un veicolo PROPRIO (la
+-- sottoquery passa dalla RLS di travel_vehicles: vede solo i tuoi).
+drop policy if exists travel_profiles_insert on public.travel_profiles;
+create policy travel_profiles_insert on public.travel_profiles
+    for insert with check ( owner_id = auth.uid() and public.travel_company_ok(company_id)
+        and (vehicle_id is null or exists (select 1 from public.travel_vehicles v where v.id = vehicle_id)) );
+drop policy if exists travel_profiles_update on public.travel_profiles;
+create policy travel_profiles_update on public.travel_profiles
+    for update using ( owner_id = auth.uid() )
+    with check ( owner_id = auth.uid() and public.travel_company_ok(company_id)
+        and (vehicle_id is null or exists (select 1 from public.travel_vehicles v where v.id = vehicle_id)) );
+
+-- travel_trip_save con vehicle_id: un veicolo non tuo viene ignorato (la RLS
+-- di travel_vehicles lo rende invisibile → null), non fa fallire il salvataggio.
+create or replace function public.travel_trip_save(p_trip jsonb, p_days jsonb)
+returns uuid language plpgsql security invoker set search_path = public
+as $$
+declare
+    v_id  uuid := nullif(p_trip->>'id','')::uuid;
+    v_dp  date := nullif(p_trip->>'data_partenza','')::date;
+    v_dr  date := nullif(p_trip->>'data_rientro','')::date;
+    v_veh uuid;
+    v_n   integer;
+begin
+    if v_dp is null or v_dr is null or v_dr < v_dp then
+        raise exception 'Date della trasferta non valide' using errcode = '22023';
+    end if;
+    select v.id into v_veh from public.travel_vehicles v
+     where v.id = nullif(p_trip->>'vehicle_id','')::uuid;
+
+    if v_id is null then
+        insert into public.travel_trips (company_id, profile_id, vehicle_id, data_partenza, data_rientro,
+            partenza, destinazione, km_andata, andata_ritorno, tariffa_km, veicolo, caselli, descrizione)
+        values (
+            (p_trip->>'company_id')::uuid,
+            nullif(p_trip->>'profile_id','')::uuid,
+            v_veh,
+            v_dp, v_dr,
+            p_trip->>'partenza', p_trip->>'destinazione',
+            coalesce(nullif(p_trip->>'km_andata','')::numeric, 0),
+            coalesce((p_trip->>'andata_ritorno')::boolean, true),
+            coalesce(nullif(p_trip->>'tariffa_km','')::numeric, 0),
+            nullif(p_trip->>'veicolo',''), nullif(p_trip->>'caselli',''), nullif(p_trip->>'descrizione','')
+        )
+        returning id into v_id;
+    else
+        update public.travel_trips set
+            company_id     = (p_trip->>'company_id')::uuid,
+            profile_id     = nullif(p_trip->>'profile_id','')::uuid,
+            vehicle_id     = v_veh,
+            data_partenza  = v_dp,
+            data_rientro   = v_dr,
+            partenza       = p_trip->>'partenza',
+            destinazione   = p_trip->>'destinazione',
+            km_andata      = coalesce(nullif(p_trip->>'km_andata','')::numeric, 0),
+            andata_ritorno = coalesce((p_trip->>'andata_ritorno')::boolean, true),
+            tariffa_km     = coalesce(nullif(p_trip->>'tariffa_km','')::numeric, 0),
+            veicolo        = nullif(p_trip->>'veicolo',''),
+            caselli        = nullif(p_trip->>'caselli',''),
+            descrizione    = nullif(p_trip->>'descrizione','')
+        where id = v_id;
+        get diagnostics v_n = row_count;
+        if v_n = 0 then
+            raise exception 'Trasferta non modificabile: è già stata inserita in un documento oppure non è tua'
+                using errcode = '42501';
+        end if;
+    end if;
+
+    delete from public.travel_trip_days where trip_id = v_id;
+    insert into public.travel_trip_days (trip_id, giorno, pedaggi, parcheggi, trasporti, vitto, alloggio, altre, note)
+    select v_id,
+           (d->>'giorno')::date,
+           coalesce(nullif(d->>'pedaggi','')::numeric, 0),
+           coalesce(nullif(d->>'parcheggi','')::numeric, 0),
+           coalesce(nullif(d->>'trasporti','')::numeric, 0),
+           coalesce(nullif(d->>'vitto','')::numeric, 0),
+           coalesce(nullif(d->>'alloggio','')::numeric, 0),
+           coalesce(nullif(d->>'altre','')::numeric, 0),
+           nullif(d->>'note','')
+    from jsonb_array_elements(coalesce(p_days, '[]'::jsonb)) d;
+
+    if exists (select 1 from public.travel_trip_days
+               where trip_id = v_id and (giorno < v_dp or giorno > v_dr)) then
+        raise exception 'Un giorno di spesa è fuori dal periodo della trasferta' using errcode = '22023';
+    end if;
+
+    return v_id;
+end; $$;
+
+-- Grant espliciti (da 2026-10-30 Supabase non li concede più in automatico)
+grant select, insert, update, delete on public.travel_vehicles to authenticated;
+revoke execute on function public.travel_trip_save(jsonb, jsonb) from public, anon;
+grant  execute on function public.travel_trip_save(jsonb, jsonb) to authenticated;

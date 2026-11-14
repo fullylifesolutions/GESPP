@@ -41,3 +41,9 @@ le RPC `travel_trip_link/unlink/move_invoice`. km e caselli dalla Edge Function
 `travel-route` (`functions/edge_travel_route.ts`, secret `HERE_API_KEY`); il
 pedaggio in euro resta manuale di proposito: HERE sovrastima in modo
 irregolare rispetto a Moveo (+9%/+15%/+40% su tre tratte, 2026-11-14).
+Veicoli (`travel_vehicles`, solo proprietario): la scheda punta al veicolo e
+NON salva la tariffa (aggiornamento ACI annuale in un punto solo); la
+trasferta salva una COPIA di nome/tariffa, così le note spese passate non
+cambiano. Pedaggio automatico dalla scheda (`TR_EDIT.autoPed`): andata primo
+giorno, ritorno ultimo, ricalcolato a ogni cambio date/A-R finché l'utente non
+scrive un pedaggio a mano.
