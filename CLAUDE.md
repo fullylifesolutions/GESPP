@@ -30,3 +30,14 @@ team globale, senza bisogno di logica dedicata alla migrazione. L'accesso
 resta comunque governato da `can_access_team` — un grafo separato da
 `can_access_person`: dentro la scheda di un'azienda, un consulente vede
 solo i team interni a cui è assegnato, non tutti i team di quell'azienda.
+
+**Trasferte (tab "Trasferte", tabelle `travel_*`, script `schema/gespp_trasferte.sql`).**
+Ogni consulente registra schede cliente (percorso abituale) e trasferte su più
+giorni, solo per le aziende assegnate (`travel_company_ok()`: admin tutte,
+altri via `consultant_company` — NON basta leggere `companies`, chi ha
+`puo_fatturare` le legge tutte). Il gestionale le legge e le mette in fattura:
+una trasferta con `invoice_id` è bloccata (RLS) e `invoice_id` lo scrivono solo
+le RPC `travel_trip_link/unlink/move_invoice`. km e caselli dalla Edge Function
+`travel-route` (`functions/edge_travel_route.ts`, secret `HERE_API_KEY`); il
+pedaggio in euro resta manuale di proposito: HERE sovrastima in modo
+irregolare rispetto a Moveo (+9%/+15%/+40% su tre tratte, 2026-11-14).
