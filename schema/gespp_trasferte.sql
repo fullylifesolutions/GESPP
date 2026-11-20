@@ -263,6 +263,11 @@ begin
     if v_emitter is null or not public.can_use_emitter(v_emitter) then
         raise exception 'Documento non accessibile' using errcode = '42501';
     end if;
+    -- solo le proprie trasferte (l'admin può fatturare anche quelle altrui)
+    if not public.is_admin() and not exists (
+           select 1 from public.travel_trips t where t.id = p_trip_id and t.owner_id = auth.uid()) then
+        raise exception 'Trasferta non accessibile' using errcode = '42501';
+    end if;
     update public.travel_trips
        set invoice_id = p_invoice_id, collegata_at = now()
      where id = p_trip_id and (invoice_id is null or invoice_id = p_invoice_id);
@@ -293,7 +298,8 @@ begin
     if not (public.can_bill() or public.is_admin()) then
         raise exception 'Permesso di fatturazione mancante' using errcode = '42501';
     end if;
-    select t.invoice_id into v_invoice from public.travel_trips t where t.id = p_trip_id;
+    select t.invoice_id into v_invoice from public.travel_trips t
+     where t.id = p_trip_id and (t.owner_id = auth.uid() or public.is_admin());
     if v_invoice is null then
         return;
     end if;
@@ -374,11 +380,12 @@ drop policy if exists travel_profiles_delete on public.travel_profiles;
 create policy travel_profiles_delete on public.travel_profiles
     for delete using ( owner_id = auth.uid() );
 
--- Trasferte: lettura anche ad admin e fatturazione; scrittura solo al
+-- Trasferte: lettura al proprietario e all'admin (non a tutti quelli che
+-- fatturano: ogni operatore vede solo le sue, 2026-11-20); scrittura solo al
 -- proprietario e solo finché non è in un documento.
 drop policy if exists travel_trips_select on public.travel_trips;
 create policy travel_trips_select on public.travel_trips
-    for select using ( owner_id = auth.uid() or public.is_admin() or public.can_bill() );
+    for select using ( owner_id = auth.uid() or public.is_admin() );
 drop policy if exists travel_trips_insert on public.travel_trips;
 create policy travel_trips_insert on public.travel_trips
     for insert with check ( owner_id = auth.uid() and invoice_id is null
