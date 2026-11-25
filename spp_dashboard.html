@@ -80,6 +80,9 @@
   .modal{background:var(--panel);border-radius:var(--radius);padding:22px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;}
   .modal h3{font-family:var(--font);font-size:18px;margin:0 0 16px;}
   .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:4px;}
+  .as-st{font-size:11px;color:var(--ink-soft);min-height:14px;margin:-6px 0 8px;}
+  .as-st.ok{color:var(--ok-ink);} .as-st.err{color:var(--danger);}
+  .pre{white-space:pre-wrap;}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;}
   .assign-box{background:#f7f9fb;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:6px 0 14px;}
   .assign-box .ttl{font-size:13px;color:var(--ink-soft);margin-bottom:8px;}
@@ -1068,7 +1071,7 @@ function renderSppDetail(id){
     ${row('4 · Foglietto embrionale', r.asse4_foglietto)}
     ${row('5 · Intensità', r.asse5_intensita)}
     ${row('6 · Reciprocità', r.asse6_reciprocita)}
-    ${r.note?`<div class="sub-item"><div class="m"><div class="d">Note</div><div>${escapeHtml(r.note)}</div></div></div>`:''}`;
+    ${r.note?`<div class="sub-item"><div class="m"><div class="d">Note</div><div class="pre">${escapeHtml(r.note)}</div></div></div>`:''}`;
 }
 
 // crea nuova rilevazione, precompilata con l'ultima (verifica nel tempo)
@@ -1315,21 +1318,23 @@ function openCompanyNoteModal(id, companies){
   el('modal-cnote').classList.add('open');
   el('cn-titolo').focus();
 }
-async function saveCompanyNote(){
+async function saveCompanyNote(auto){
+  auto=auto===true;
   const msg=el('cn-msg'); msg.className='msg';
   const titolo=el('cn-titolo').value.trim();
-  if(!titolo){ msg.textContent='Il titolo è obbligatorio.'; msg.className='msg err'; return; }
+  if(!titolo){ if(auto) return 'Inserisci il titolo per il salvataggio automatico.'; msg.textContent='Il titolo è obbligatorio.'; msg.className='msg err'; return; }
   const companyId=CNOTE_FROM_MEETING?el('cn-company').value:CURRENT_COMPANY;
-  if(!companyId){ msg.textContent='Seleziona l\'azienda.'; msg.className='msg err'; return; }
+  if(!companyId){ if(auto) return 'Seleziona l\'azienda per il salvataggio automatico.'; msg.textContent='Seleziona l\'azienda.'; msg.className='msg err'; return; }
   const payload={titolo, corpo:el('cn-corpo').value.trim()||null};
-  const btn=el('cn-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const btn=el('cn-save'); if(!auto){ btn.disabled=true; btn.textContent='Salvataggio…'; }
   // .select() per accorgersi di un update negato dalla RLS (non dà errore, tocca 0 righe)
   const {data,error} = EDIT_CNOTE
     ? await sb.from('company_notes').update(payload).eq('id',EDIT_CNOTE).select('id')
     : await sb.from('company_notes').insert({...payload, company_id:companyId}).select('id');
-  btn.disabled=false; btn.textContent='Salva';
-  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
-  if(!data||!data.length){ msg.textContent='Non hai i permessi per modificare questa nota.'; msg.className='msg err'; return; }
+  if(!auto){ btn.disabled=false; btn.textContent='Salva'; }
+  if(error){ if(auto) return 'Salvataggio automatico non riuscito: '+error.message; msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(!data||!data.length){ if(auto) return 'Non hai i permessi per modificare questa nota.'; msg.textContent='Non hai i permessi per modificare questa nota.'; msg.className='msg err'; return; }
+  if(auto){ if(!EDIT_CNOTE){ EDIT_CNOTE=data[0].id; el('cn-company').disabled=true; } return true; }
   el('modal-cnote').classList.remove('open'); EDIT_CNOTE=null;
   // dall'incontro non c'è nessun elenco note a schermo: l'incontro resta aperto sotto
   if(!CNOTE_FROM_MEETING){ loadCompanyNotes(CURRENT_COMPANY, true); return; }
@@ -1406,19 +1411,21 @@ function openOperatorNoteModal(id){
   el('modal-onote').classList.add('open');
   el('on-titolo').focus();
 }
-async function saveOperatorNote(){
+async function saveOperatorNote(auto){
+  auto=auto===true;
   const msg=el('on-msg'); msg.className='msg';
   const titolo=el('on-titolo').value.trim();
-  if(!titolo){ msg.textContent='Il titolo è obbligatorio.'; msg.className='msg err'; return; }
+  if(!titolo){ if(auto) return 'Inserisci il titolo per il salvataggio automatico.'; msg.textContent='Il titolo è obbligatorio.'; msg.className='msg err'; return; }
   const payload={titolo, corpo:el('on-corpo').value.trim()||null};
-  const btn=el('on-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const btn=el('on-save'); if(!auto){ btn.disabled=true; btn.textContent='Salvataggio…'; }
   // .select() per accorgersi di un update negato dalla RLS (non dà errore, tocca 0 righe)
   const {data,error} = EDIT_ONOTE
     ? await sb.from('operator_notes').update(payload).eq('id',EDIT_ONOTE).select('id')
     : await sb.from('operator_notes').insert(payload).select('id');
-  btn.disabled=false; btn.textContent='Salva';
-  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
-  if(!data||!data.length){ msg.textContent='Non hai i permessi per modificare questa nota.'; msg.className='msg err'; return; }
+  if(!auto){ btn.disabled=false; btn.textContent='Salva'; }
+  if(error){ if(auto) return 'Salvataggio automatico non riuscito: '+error.message; msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(!data||!data.length){ if(auto) return 'Non hai i permessi per modificare questa nota.'; msg.textContent='Non hai i permessi per modificare questa nota.'; msg.className='msg err'; return; }
+  if(auto){ EDIT_ONOTE=EDIT_ONOTE||data[0].id; return true; }
   el('modal-onote').classList.remove('open'); EDIT_ONOTE=null;
   loadOperatorNotes();
 }
@@ -2306,13 +2313,13 @@ async function loadHealth(personId){
       const notes = SELFREP_ALL.filter(n=>n.health_record_id===r.id);
       const notesHtml = notes.length
         ? notes.map(n=>`<div style="display:flex;align-items:center;font-size:12px;color:var(--ink-soft);padding:4px 0 4px 12px;border-left:2px solid var(--line);margin:4px 0 4px 4px;">
-            <span style="flex:1;">${fmtDate(n.data_nota)} — ${escapeHtml(n.testo)}</span>
+            <span class="pre" style="flex:1;">${fmtDate(n.data_nota)} — ${escapeHtml(n.testo)}</span>
             ${canWrite?'<button class="ghost small note-edit" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
         : '';
       return `<div class="sub-item" style="display:block;">
         <div style="display:flex;align-items:center;">
           <div class="m" style="flex:1;"><div>${escapeHtml(patName[r.pathology_id]||'—')}</div>
-          <div class="d">${[r.data_rilevazione?fmtDate(r.data_rilevazione):'',escapeHtml(r.note_self_report||'')].filter(Boolean).join(' · ')||'—'}</div></div>
+          <div class="d pre">${[r.data_rilevazione?fmtDate(r.data_rilevazione):'',escapeHtml(r.note_self_report||'')].filter(Boolean).join(' · ')||'—'}</div></div>
           ${canWrite?'<button class="ghost small sr-add-pat" data-hr="'+r.id+'">+ Nota</button> <button class="ghost small hr-edit" data-id="'+r.id+'">Modifica</button> <button class="ghost small hr-arch" data-id="'+r.id+'">Archivia</button>':''}
         </div>
         ${notesHtml}
@@ -2331,7 +2338,7 @@ async function loadHealth(personId){
   const generali = SELFREP_ALL.filter(n=>!n.health_record_id);
   diaryActions.innerHTML = canWrite?'<button class="primary small" id="sr-add-gen">+ Nota diario</button>':'';
   diaryBody.innerHTML = generali.length
-    ? generali.map(n=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(n.data_nota)}</div><div>${escapeHtml(n.testo)}</div></div>${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
+    ? generali.map(n=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(n.data_nota)}</div><div class="pre">${escapeHtml(n.testo)}</div></div>${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
     : `<div class="empty" style="padding:14px;">Nessuna nota di diario.</div>`;
 
   // diritto all'oblio: cancellazione definitiva, solo admin (resta in Dati sanitari)
@@ -2369,14 +2376,16 @@ function openFamilyModal(){
   FAMILY_FIELDS.forEach(([k,,id])=>el(id).value=(FAMILY_ROW&&FAMILY_ROW[k])||'');
   el('modal-family').classList.add('open');
 }
-async function saveFamily(){
+async function saveFamily(auto){
+  auto=auto===true;
   const msg=el('fam-msg'); msg.className='msg';
   const payload={person_id:CURRENT_PERSON, updated_at:new Date().toISOString()};
   FAMILY_FIELDS.forEach(([k,,id])=>payload[k]=el(id).value.trim()||null);
-  const btn=el('fam-save'); btn.disabled=true; btn.textContent='Salvataggio…';
+  const btn=el('fam-save'); if(!auto){ btn.disabled=true; btn.textContent='Salvataggio…'; }
   const {error}=await sb.from('person_family').upsert(payload,{onConflict:'person_id'});
-  btn.disabled=false; btn.textContent='Salva';
-  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(!auto){ btn.disabled=false; btn.textContent='Salva'; }
+  if(error){ if(auto) return 'Salvataggio automatico non riuscito: '+error.message; msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(auto) return true;
   el('modal-family').classList.remove('open');
   loadFamily(CURRENT_PERSON);
 }
@@ -2406,16 +2415,18 @@ function openQuestionModal(q){
   el('q-testo').value=q?q.testo:'';
   el('modal-question').classList.add('open');
 }
-async function saveQuestion(){
+async function saveQuestion(auto){
+  auto=auto===true;
   const msg=el('q-msg'); msg.className='msg';
   const data=el('q-data').value, testo=el('q-testo').value.trim();
-  if(!data||!testo){ msg.textContent='Data e domanda sono obbligatorie.'; msg.className='msg err'; return; }
-  const btn=el('q-save'); btn.disabled=true; btn.textContent='Salvataggio…';
-  let error;
+  if(!data||!testo){ if(auto) return 'Data e domanda servono per il salvataggio automatico.'; msg.textContent='Data e domanda sono obbligatorie.'; msg.className='msg err'; return; }
+  const btn=el('q-save'); if(!auto){ btn.disabled=true; btn.textContent='Salvataggio…'; }
+  let error, row;
   if(EDIT_Q) ({error}=await sb.from('person_questions').update({data_domanda:data, testo, updated_at:new Date().toISOString()}).eq('id',EDIT_Q));
-  else ({error}=await sb.from('person_questions').insert({person_id:CURRENT_PERSON, data_domanda:data, testo}));
-  btn.disabled=false; btn.textContent='Salva';
-  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  else { ({data:row,error}=await sb.from('person_questions').insert({person_id:CURRENT_PERSON, data_domanda:data, testo}).select('id').single()); if(row) EDIT_Q=row.id; }
+  if(!auto){ btn.disabled=false; btn.textContent='Salva'; }
+  if(error){ if(auto) return 'Salvataggio automatico non riuscito: '+error.message; msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(auto) return true;
   el('modal-question').classList.remove('open'); EDIT_Q=null;
   loadQuestions(CURRENT_PERSON);
 }
@@ -2452,21 +2463,24 @@ function openSelfRepModal(personId, healthRecordId, note){
   el('modal-selfrep').classList.add('open');
 }
 let SR_HR=null, EDIT_SR=null;
-async function saveSelfRep(){
+async function saveSelfRep(auto){
+  auto=auto===true;
   const msg=el('sr-msg'); msg.className='msg';
-  if(!el('sr-data').value||!el('sr-testo').value.trim()){ msg.textContent='Data e testo sono obbligatori.'; msg.className='msg err'; return; }
-  const btn=el('sr-save'); btn.disabled=true; btn.textContent='Salvataggio…';
-  let error;
+  if(!el('sr-data').value||!el('sr-testo').value.trim()){ if(auto) return 'Data e testo servono per il salvataggio automatico.'; msg.textContent='Data e testo sono obbligatori.'; msg.className='msg err'; return; }
+  const btn=el('sr-save'); if(!auto){ btn.disabled=true; btn.textContent='Salvataggio…'; }
+  let error, row;
   if(EDIT_SR){
     ({error}=await sb.from('self_reports').update({data_nota:el('sr-data').value, testo:el('sr-testo').value.trim()}).eq('id',EDIT_SR));
   } else {
-    ({error}=await sb.from('self_reports').insert({
+    ({data:row,error}=await sb.from('self_reports').insert({
       person_id:HEALTH_PERSON, health_record_id:SR_HR||null, consultant_id:ME.id,
       data_nota:el('sr-data').value, testo:el('sr-testo').value.trim(), fonte:'persona'
-    }));
+    }).select('id').single());
+    if(row) EDIT_SR=row.id;
   }
-  btn.disabled=false; btn.textContent='Salva';
-  if(error){ msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(!auto){ btn.disabled=false; btn.textContent='Salva'; }
+  if(error){ if(auto) return 'Salvataggio automatico non riuscito: '+error.message; msg.textContent='Errore: '+error.message; msg.className='msg err'; return; }
+  if(auto) return true;
   el('modal-selfrep').classList.remove('open');
   loadHealth(HEALTH_PERSON);
 }
@@ -2609,6 +2623,98 @@ async function savePatho(){
   loadHealth(HEALTH_PERSON);
 }
 
+// ---------- SALVATAGGIO AUTOMATICO ----------
+// Nelle finestre di testo (incontri, incontri di gruppo, note azienda, note
+// operatore, diario, domande, famiglia) il contenuto si salva da solo
+// AUTOSAVE_MS dopo l'ultima digitazione, quando si passa ad altra scheda/app e
+// alla chiusura della finestra: chiudere ("Chiudi" o clic fuori) non perde il
+// testo. Il primo salvataggio di un elemento nuovo crea la riga e la finestra
+// passa in modifica su quella (EDIT_* impostato dalla save) — niente doppioni.
+// I salvataggi della stessa finestra sono in coda (st.chain): mai due insert
+// in parallelo. Le save accettano auto===true: non chiudono, ritornano true o
+// il motivo del mancato salvataggio (es. campo obbligatorio vuoto).
+// Le altre finestre non si salvano da sole ma col clic fuori chiedono conferma
+// se c'è qualcosa di modificato (closeModalAsk).
+const AUTOSAVE_MS=3000;
+const AUTOSAVE_CFG={
+  'modal-meeting':      {save:saveMeeting,      cancel:'mm-cancel',  btn:'mm-save',  onClose:()=>loadMeetings(CURRENT_PERSON)},
+  'modal-team-meeting': {save:saveTeamMeeting,  cancel:'tmm-cancel', btn:'tmm-save', onClose:()=>loadTeamMeetings(CURRENT_TEAM, ME.ruolo==='admin'||ME.ruolo==='consulente')},
+  'modal-cnote':        {save:saveCompanyNote,  cancel:'cn-cancel',  btn:'cn-save',  onClose:()=>{ if(!CNOTE_FROM_MEETING) loadCompanyNotes(CURRENT_COMPANY,true); }, reset:()=>{ EDIT_CNOTE=null; }},
+  'modal-onote':        {save:saveOperatorNote, cancel:'on-cancel',  btn:'on-save',  onClose:()=>loadOperatorNotes(), reset:()=>{ EDIT_ONOTE=null; }},
+  'modal-selfrep':      {save:saveSelfRep,      cancel:'sr-cancel',  btn:'sr-save',  onClose:()=>loadHealth(HEALTH_PERSON)},
+  'modal-question':     {save:saveQuestion,     cancel:'q-cancel',   btn:'q-save',   onClose:()=>loadQuestions(CURRENT_PERSON), reset:()=>{ EDIT_Q=null; }},
+  'modal-family':       {save:saveFamily,       cancel:'fam-cancel', btn:'fam-save', onClose:()=>loadFamily(CURRENT_PERSON)},
+};
+const AS={}; // per finestra: {el, timer, dirty, saved, busy (salvataggi in corso), chain}
+function asStatus(m,text,kind){ const s=AS[m].el; s.textContent=text||''; s.className='as-st'+(kind?' '+kind:''); }
+function asRun(m){
+  const st=AS[m]; clearTimeout(st.timer); st.timer=null;
+  if(!st.dirty) return st.chain;
+  st.dirty=false; st.busy++; asStatus(m,'Salvataggio automatico…');
+  st.chain=st.chain.then(()=>AUTOSAVE_CFG[m].save(true)).then(r=>{
+    if(r===true){ st.saved=true; if(!st.dirty) asStatus(m,'Salvato automaticamente alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),'ok'); }
+    else { st.dirty=true; asStatus(m,r||'Non salvato.','err'); }
+  }).catch(e=>{ st.dirty=true; asStatus(m,'Salvataggio automatico non riuscito: '+e.message,'err'); }).finally(()=>{ st.busy--; });
+  return st.chain;
+}
+async function asManualSave(m){
+  const st=AS[m], btn=el(AUTOSAVE_CFG[m].btn);
+  clearTimeout(st.timer); st.timer=null;
+  btn.disabled=true; await st.chain; btn.disabled=false;
+  st.chain=st.chain.then(()=>AUTOSAVE_CFG[m].save(false));
+  await st.chain; // se va a buon fine la save chiude la finestra e ricarica l'elenco
+}
+async function asClose(m){
+  const st=AS[m];
+  await asRun(m);
+  if(st.dirty && !confirm('Il testo non è stato salvato:\n'+st.el.textContent+'\n\nChiudere comunque e perdere le ultime modifiche?')) return;
+  el(m).classList.remove('open');
+  const c=AUTOSAVE_CFG[m]; if(c.reset) c.reset();
+  if(st.saved) c.onClose();
+}
+function closeModalAsk(m){
+  if(el(m).dataset.dirty && !confirm('Ci sono modifiche non salvate. Chiudere comunque?')) return;
+  el(m).classList.remove('open');
+}
+function setupAutosave(){
+  document.querySelectorAll('.modal-bg').forEach(bg=>{
+    const m=bg.id, auto=!!AUTOSAVE_CFG[m];
+    if(auto){
+      const s=document.createElement('div'); s.className='as-st';
+      const actions=bg.querySelector('.modal-actions'); actions.parentNode.insertBefore(s,actions);
+      AS[m]={el:s, timer:null, dirty:false, saved:false, busy:0, chain:Promise.resolve()};
+      el(AUTOSAVE_CFG[m].cancel).textContent='Chiudi';
+      el(AUTOSAVE_CFG[m].cancel).addEventListener('click',()=>asClose(m));
+      el(AUTOSAVE_CFG[m].btn).addEventListener('click',()=>asManualSave(m));
+      bg.addEventListener('click',e=>{ if(e.target===bg) asClose(m); });
+    }
+    const onEdit=()=>{
+      bg.dataset.dirty='1';
+      if(!auto) return;
+      const st=AS[m]; st.dirty=true; clearTimeout(st.timer);
+      st.timer=setTimeout(()=>asRun(m),AUTOSAVE_MS);
+    };
+    bg.addEventListener('input',onEdit); bg.addEventListener('change',onEdit);
+    // all'apertura (classe "open" aggiunta) si riparte da pulito
+    new MutationObserver(()=>{
+      const open=bg.classList.contains('open');
+      if(open && !bg.dataset.wasOpen){
+        bg.dataset.dirty='';
+        if(auto){ const st=AS[m]; clearTimeout(st.timer); st.timer=null; st.dirty=false; st.saved=false; asStatus(m,'Il testo si salva da solo mentre scrivi.'); }
+      }
+      bg.dataset.wasOpen=open?'1':'';
+    }).observe(bg,{attributes:true,attributeFilter:['class']});
+  });
+  // cambio scheda/app del browser: salva subito ciò che è in sospeso
+  const flushAll=()=>Object.keys(AS).forEach(m=>{ if(el(m).classList.contains('open')&&AS[m].dirty) asRun(m); });
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushAll(); });
+  window.addEventListener('beforeunload',e=>{
+    const pending=[...document.querySelectorAll('.modal-bg.open')].some(bg=>AS[bg.id]?(AS[bg.id].dirty||AS[bg.id].busy>0):bg.dataset.dirty);
+    if(!pending) return;
+    flushAll(); e.preventDefault(); e.returnValue='';
+  });
+}
+
 // ---------- INCONTRI ----------
 let EDIT_MEETING=null;
 async function loadMeetings(personId){
@@ -2619,7 +2725,7 @@ async function loadMeetings(personId){
   if(!data||!data.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessun incontro registrato.</div>`; return; }
   body.innerHTML=data.map(m=>`<div class="sub-item">
     <div class="m"><div>${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</div>
-    <div class="d">${escapeHtml(m.sintesi||'—')}</div></div>
+    <div class="d pre">${escapeHtml(m.sintesi||'—')}</div></div>
     ${canWrite?'<button class="ghost small meet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger meet-del" data-id="'+m.id+'">Elimina</button>':''}</div>`).join('');
   if(canWrite){
     body.querySelectorAll('.meet-edit').forEach(b=>b.addEventListener('click',()=>openMeetingModal(b.dataset.id)));
@@ -2641,21 +2747,26 @@ async function openMeetingModal(id){
   }
   el('modal-meeting').classList.add('open');
 }
-async function saveMeeting(){
+// auto===true: salvataggio automatico (vedi SALVATAGGIO AUTOMATICO) — non chiude
+// la finestra, dopo il primo insert passa in modifica sulla riga creata.
+// Ritorna true se salvato, altrimenti il motivo (stringa).
+async function saveMeeting(auto){
+  auto=auto===true;
   const msg=el('mm-msg'); msg.className='msg';
-  if(!el('m-dataora').value){ msg.textContent='Data e ora sono obbligatorie.'; msg.className='msg err'; return; }
+  if(!el('m-dataora').value){ if(auto) return 'Indica data e ora per il salvataggio automatico.'; msg.textContent='Data e ora sono obbligatorie.'; msg.className='msg err'; return; }
   const payload={
     person_id:CURRENT_PERSON, consultant_id:ME.id,
     data_ora:new Date(el('m-dataora').value).toISOString(),
     durata_min:el('m-durata').value?parseInt(el('m-durata').value):null,
     sintesi:el('m-sintesi').value.trim()||null
   };
-  const btn=el('mm-save'); btn.disabled=true; btn.textContent='Salvataggio…';
-  let err;
+  const btn=el('mm-save'); if(!auto){ btn.disabled=true; btn.textContent='Salvataggio…'; }
+  let err, row;
   if(EDIT_MEETING){ ({error:err}=await sb.from('meetings').update(payload).eq('id',EDIT_MEETING)); }
-  else { ({error:err}=await sb.from('meetings').insert(payload)); }
-  btn.disabled=false; btn.textContent='Salva';
-  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  else { ({data:row,error:err}=await sb.from('meetings').insert(payload).select('id').single()); if(row) EDIT_MEETING=row.id; }
+  if(!auto){ btn.disabled=false; btn.textContent='Salva'; }
+  if(err){ if(auto) return 'Salvataggio automatico non riuscito: '+err.message; msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  if(auto) return true;
   el('modal-meeting').classList.remove('open');
   loadMeetings(CURRENT_PERSON);
 }
@@ -2717,7 +2828,7 @@ async function viewTeams(){
   const nMembri=await countTeamMembers(globalData.map(t=>t.id));
   list.innerHTML=globalData.map(t=>`<div class="list-item" data-id="${t.id}" style="${t.attivo?'':'opacity:.55;'}"><div class="li-ic">👥</div>
     <div class="li-main"><div class="t">${escapeHtml(t.nome)}${teamCountBadge(nMembri[t.id]||0)} ${t.attivo?'':'<span style="font-size:11px;color:var(--ink-soft);">(non attivo)</span>'}</div>
-    <div class="d">${escapeHtml(t.descrizione||'')||'—'}</div></div>
+    <div class="d pre">${escapeHtml(t.descrizione||'')||'—'}</div></div>
     ${isAdmin?'<button class="ghost small edit-btn" data-id="'+t.id+'">Modifica</button> <button class="ghost small danger team-del" data-id="'+t.id+'" data-nome="'+escapeHtml(t.nome)+'">Elimina</button>':''}<span class="li-arrow">›</span></div>`).join('');
   list.querySelectorAll('.list-item').forEach(item=>item.addEventListener('click',e=>{ if(e.target.classList.contains('edit-btn')||e.target.classList.contains('team-del'))return; enterTeam(item.dataset.id); }));
   list.querySelectorAll('.edit-btn').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openTeamModal(b.dataset.id); }));
@@ -2931,7 +3042,7 @@ async function loadTeamMeetings(teamId,canWrite){
   if(!data||!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun incontro di gruppo registrato.</div>`; return; }
   box.innerHTML=data.map(m=>`<div class="sub-item">
     <div class="m"><div>${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</div>
-    <div class="d">${escapeHtml(m.sintesi||'—')}</div></div>
+    <div class="d pre">${escapeHtml(m.sintesi||'—')}</div></div>
     ${canWrite?'<button class="ghost small tmeet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger tmeet-del" data-id="'+m.id+'">Elimina</button>':''}</div>`).join('');
   if(canWrite){
     box.querySelectorAll('.tmeet-edit').forEach(b=>b.addEventListener('click',()=>openTeamMeetingModal(b.dataset.id)));
@@ -2947,19 +3058,21 @@ async function openTeamMeetingModal(id){
   } else { el('tm-dataora').value=localDateTimeInput(new Date()); el('tm-durata').value=''; el('tm-sintesi').value=''; }
   el('modal-team-meeting').classList.add('open');
 }
-async function saveTeamMeeting(){
+async function saveTeamMeeting(auto){
+  auto=auto===true;
   const msg=el('tmm-msg'); msg.className='msg';
-  if(!el('tm-dataora').value){ msg.textContent='Data e ora sono obbligatorie.'; msg.className='msg err'; return; }
+  if(!el('tm-dataora').value){ if(auto) return 'Indica data e ora per il salvataggio automatico.'; msg.textContent='Data e ora sono obbligatorie.'; msg.className='msg err'; return; }
   const payload={ team_id:CURRENT_TEAM, consultant_id:ME.id,
     data_ora:new Date(el('tm-dataora').value).toISOString(),
     durata_min:el('tm-durata').value?parseInt(el('tm-durata').value):null,
     sintesi:el('tm-sintesi').value.trim()||null };
-  const btn=el('tmm-save'); btn.disabled=true; btn.textContent='Salvataggio…';
-  let err;
+  const btn=el('tmm-save'); if(!auto){ btn.disabled=true; btn.textContent='Salvataggio…'; }
+  let err, row;
   if(EDIT_TEAM_MEETING){ ({error:err}=await sb.from('team_meetings').update(payload).eq('id',EDIT_TEAM_MEETING)); }
-  else { ({error:err}=await sb.from('team_meetings').insert(payload)); }
-  btn.disabled=false; btn.textContent='Salva';
-  if(err){ msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  else { ({data:row,error:err}=await sb.from('team_meetings').insert(payload).select('id').single()); if(row) EDIT_TEAM_MEETING=row.id; }
+  if(!auto){ btn.disabled=false; btn.textContent='Salva'; }
+  if(err){ if(auto) return 'Salvataggio automatico non riuscito: '+err.message; msg.textContent='Errore: '+err.message; msg.className='msg err'; return; }
+  if(auto) return true;
   el('modal-team-meeting').classList.remove('open');
   loadTeamMeetings(CURRENT_TEAM, ME.ruolo==='admin'||ME.ruolo==='consulente');
 }
@@ -3279,8 +3392,6 @@ el('pat-newtoggle').addEventListener('click', ()=>{ const b=el('pat-newbox'); b.
 el('pat-newcancel').addEventListener('click', ()=>{ el('pat-newbox').style.display='none'; el('pat-newname').value=''; el('pat-simwarn').style.display='none'; });
 el('pat-newname').addEventListener('input', checkSimilar);
 el('pat-newsave').addEventListener('click', saveNewPatho);
-el('mm-cancel').addEventListener('click', ()=>{ el('modal-meeting').classList.remove('open'); });
-el('mm-save').addEventListener('click', saveMeeting);
 el('mt-cancel').addEventListener('click', ()=>{ el('modal-team').classList.remove('open'); EDIT_TEAM=null; TEAM_CREATE_COMPANY=null; });
 el('mt-save').addEventListener('click', saveTeamModal);
 el('ta-cancel').addEventListener('click', ()=>{ el('modal-team-assign').classList.remove('open'); });
@@ -3288,14 +3399,6 @@ el('ta-save').addEventListener('click', saveTeamAssign);
 el('tm-cancel').addEventListener('click', closeTeamMemberModal);
 el('tm-search-btn').addEventListener('click', searchTeamMembers);
 el('tm-search').addEventListener('keydown', e=>{ if(e.key==='Enter') searchTeamMembers(); });
-el('tmm-cancel').addEventListener('click', ()=>{ el('modal-team-meeting').classList.remove('open'); });
-el('tmm-save').addEventListener('click', saveTeamMeeting);
-el('sr-cancel').addEventListener('click', ()=>{ el('modal-selfrep').classList.remove('open'); });
-el('sr-save').addEventListener('click', saveSelfRep);
-el('cn-cancel').addEventListener('click', ()=>{ el('modal-cnote').classList.remove('open'); EDIT_CNOTE=null; });
-el('cn-save').addEventListener('click', saveCompanyNote);
-el('on-cancel').addEventListener('click', ()=>{ el('modal-onote').classList.remove('open'); EDIT_ONOTE=null; });
-el('on-save').addEventListener('click', saveOperatorNote);
 el('tp-cancel').addEventListener('click', ()=>{ el('modal-tprof').classList.remove('open'); EDIT_TPROF=null; });
 el('tp-save').addEventListener('click', saveTravelProfile);
 el('tp-calc').addEventListener('click', calcTravelProfileRoute);
@@ -3308,12 +3411,9 @@ el('tmm-cnote').addEventListener('click', async ()=>{
   openCompanyNoteFromMeeting((data||[]).map(m=>m.company_id));
 });
 el('mcal-cancel').addEventListener('click', ()=>{ el('modal-calendar').classList.remove('open'); });
-el('fam-cancel').addEventListener('click', ()=>{ el('modal-family').classList.remove('open'); });
-el('fam-save').addEventListener('click', saveFamily);
-el('q-cancel').addEventListener('click', ()=>{ el('modal-question').classList.remove('open'); EDIT_Q=null; });
-el('q-save').addEventListener('click', saveQuestion);
 el('mcal-save').addEventListener('click', saveCalendar);
-[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-meeting'],['modal-team'],['modal-team-assign'],['modal-team-meeting'],['modal-selfrep'],['modal-calendar'],['modal-cnote'],['modal-onote'],['modal-family'],['modal-question']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) el(m).classList.remove('open'); }));
+[['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-team'],['modal-team-assign'],['modal-calendar']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) closeModalAsk(m); }));
+setupAutosave();
 el('modal-team-member').addEventListener('click', e=>{ if(e.target===el('modal-team-member')) closeTeamMemberModal(); });
 
 // ══════════════════════════════════════════════════════════════════════════
