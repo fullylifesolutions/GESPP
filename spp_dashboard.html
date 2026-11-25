@@ -83,6 +83,10 @@
   .as-st{font-size:11px;color:var(--ink-soft);min-height:14px;margin:-6px 0 8px;}
   .as-st.ok{color:var(--ok-ink);} .as-st.err{color:var(--danger);}
   .pre{white-space:pre-wrap;}
+  /* incontri e diario in elenco: data in grassetto con i pulsanti sulla stessa riga, sintesi max 10 righe (il resto con Visualizza) */
+  .meet-item{display:block;} .meet-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .meet-head .when{font-weight:700;font-size:14px;margin-right:auto;}
+  .meet-txt{font-size:13px;color:var(--ink-soft);margin-top:4px;max-width:640px;white-space:pre-wrap;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:10;overflow:hidden;}
   .modal.modal-wide{max-width:860px;}
   .vw-body{font-size:15px;line-height:1.6;max-height:65vh;overflow-y:auto;margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:7px;overflow-wrap:anywhere;}
   .vw-sec+.vw-sec{margin-top:14px;} .vw-lab{font-size:12px;color:var(--ink-soft);margin-bottom:2px;}
@@ -2360,7 +2364,7 @@ async function loadHealth(personId){
   const generali = SELFREP_ALL.filter(n=>!n.health_record_id);
   diaryActions.innerHTML = canWrite?'<button class="primary small" id="sr-add-gen">+ Nota diario</button>':'';
   diaryBody.innerHTML = generali.length
-    ? generali.map(n=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(n.data_nota)}</div><div class="pre">${escapeHtml(n.testo)}</div></div><button class="ghost small note-view" data-id="${n.id}">Visualizza</button> ${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
+    ? generali.map(n=>`<div class="sub-item meet-item"><div class="meet-head"><span class="when">${fmtDate(n.data_nota)}</span><button class="ghost small note-view" data-id="${n.id}">Visualizza</button> ${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div><div class="meet-txt">${escapeHtml(n.testo)}</div></div>`).join('')
     : `<div class="empty" style="padding:14px;">Nessuna nota di diario.</div>`;
 
   // diritto all'oblio: cancellazione definitiva, solo admin (resta in Dati sanitari)
@@ -2773,11 +2777,11 @@ async function loadMeetings(personId){
   const {data,error}=await sb.from('meetings').select('id,data_ora,durata_min,sintesi').eq('person_id',personId).order('data_ora',{ascending:false});
   if(error){ body.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   if(!data||!data.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessun incontro registrato.</div>`; return; }
-  body.innerHTML=data.map(m=>`<div class="sub-item">
-    <div class="m"><div>${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</div>
-    <div class="d pre">${escapeHtml(m.sintesi||'—')}</div></div>
+  body.innerHTML=data.map(m=>`<div class="sub-item meet-item">
+    <div class="meet-head"><span class="when">${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</span>
     <button class="ghost small meet-view" data-id="${m.id}">Visualizza</button>
-    ${canWrite?'<button class="ghost small meet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger meet-del" data-id="'+m.id+'">Elimina</button>':''}</div>`).join('');
+    ${canWrite?'<button class="ghost small meet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger meet-del" data-id="'+m.id+'">Elimina</button>':''}</div>
+    <div class="meet-txt">${escapeHtml(m.sintesi||'—')}</div></div>`).join('');
   body.querySelectorAll('.meet-view').forEach(b=>b.addEventListener('click',()=>{
     const m=data.find(x=>x.id===b.dataset.id), p=CURRENT_PERSON_OBJ;
     openViewer('Incontro del '+fmtDateTime(m.data_ora)+(m.durata_min?' · '+m.durata_min+' min':''), p?p.nome+' '+p.cognome:'',
@@ -3096,11 +3100,11 @@ async function loadTeamMeetings(teamId,canWrite){
   const {data,error}=await sb.from('team_meetings').select('id,data_ora,durata_min,sintesi').eq('team_id',teamId).order('data_ora',{ascending:false});
   if(error){ box.innerHTML=`<div class="empty">Errore: ${error.message}</div>`; return; }
   if(!data||!data.length){ box.innerHTML=`<div class="empty" style="padding:14px;">Nessun incontro di gruppo registrato.</div>`; return; }
-  box.innerHTML=data.map(m=>`<div class="sub-item">
-    <div class="m"><div>${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</div>
-    <div class="d pre">${escapeHtml(m.sintesi||'—')}</div></div>
+  box.innerHTML=data.map(m=>`<div class="sub-item meet-item">
+    <div class="meet-head"><span class="when">${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</span>
     <button class="ghost small tmeet-view" data-id="${m.id}">Visualizza</button>
-    ${canWrite?'<button class="ghost small tmeet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger tmeet-del" data-id="'+m.id+'">Elimina</button>':''}</div>`).join('');
+    ${canWrite?'<button class="ghost small tmeet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger tmeet-del" data-id="'+m.id+'">Elimina</button>':''}</div>
+    <div class="meet-txt">${escapeHtml(m.sintesi||'—')}</div></div>`).join('');
   box.querySelectorAll('.tmeet-view').forEach(b=>b.addEventListener('click',()=>{
     const m=data.find(x=>x.id===b.dataset.id);
     openViewer('Incontro di gruppo del '+fmtDateTime(m.data_ora)+(m.durata_min?' · '+m.durata_min+' min':''), CURRENT_TEAM_NOME,
