@@ -70,6 +70,12 @@
   .section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;}
   .section .sh{display:flex;align-items:center;margin-bottom:10px;}
   .section .sh .st{font-size:15px;font-weight:600;flex:1;}
+  /* riquadri richiudibili (scheda persona): chiusi all'apertura, freccia per aprirli */
+  .section.coll .sh{cursor:pointer;user-select:none;}
+  .section.coll .sh .caret{display:inline-block;width:18px;font-size:12px;color:var(--ink-soft);}
+  .section.coll .sh .cnt{font-weight:400;color:var(--ink-soft);margin-left:6px;}
+  .section.coll:not(.open) .sh{margin-bottom:0;}
+  .section.coll:not(.open) > :not(.sh){display:none;}
   .sub-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);}
   .sub-item:last-child{border-bottom:none;}
   .sub-item .m{flex:1;font-size:14px;}
@@ -949,6 +955,48 @@ function testoAnzianita(anno){
   return `${n} ${n===1?'anno':'anni'} di servizio`;
 }
 
+// ---------- RIQUADRI RICHIUDIBILI ----------
+// Scheda persona (anche professionisti) e pagina team. Il riquadro parte
+// chiuso; clic sull'intestazione (titolo o freccia) apre/chiude. Un pulsante/
+// menu nell'intestazione (es. "+ Incontro") non chiude, ma apre il riquadro,
+// così dopo il salvataggio l'elenco aggiornato è visibile.
+// Accanto al titolo il numero di elementi (COLL_COUNT, chiave = id del corpo),
+// ricalcolato a ogni ricaricamento del corpo (MutationObserver).
+const COLL_COUNT={
+  'spp-body':           ()=>{ const s=el('spp-sel'); return s&&s.style.display!=='none'?s.options.length:0; },
+  'health-body':        b=>b.querySelectorAll(':scope > .sub-item').length,
+  'family-body':        ()=>FAMILY_FIELDS.filter(([k])=>FAMILY_ROW&&FAMILY_ROW[k]).length+' su '+FAMILY_FIELDS.length,
+  'diary-body':         b=>b.querySelectorAll(':scope > .sub-item').length,
+  'question-body':      b=>b.querySelectorAll(':scope > .sub-item').length,
+  'meet-body':          b=>b.querySelectorAll(':scope > .sub-item').length,
+  'pbook-body':         b=>b.querySelectorAll('.sub-item').length,
+  'team-members-list':  b=>b.querySelectorAll(':scope > .sub-item').length,
+  'team-meetings-list': b=>b.querySelectorAll(':scope > .sub-item').length,
+};
+function makeCollapsible(sec){
+  const sh=sec.querySelector('.sh'); if(!sh) return;
+  sec.classList.add('coll');
+  const caret=document.createElement('span'); caret.className='caret'; caret.textContent='▼';
+  sh.insertBefore(caret, sh.firstChild);
+  const setOpen=o=>{ sec.classList.toggle('open',o); caret.textContent=o?'▲':'▼'; };
+  sh.addEventListener('click',e=>{
+    if(e.target.closest('button,select,input,a')) setOpen(true);
+    else setOpen(!sec.classList.contains('open'));
+  });
+  const id=Object.keys(COLL_COUNT).find(k=>sec.querySelector('#'+k)); if(!id) return;
+  const cnt=document.createElement('span'); cnt.className='cnt';
+  sh.querySelector('.st').appendChild(cnt);
+  const upd=()=>{
+    const b=el(id); if(!b) return;
+    // in caricamento, errore o sezione non disponibile al ruolo: nessun numero
+    const vuoto=b.querySelector('.spinner') || (!b.querySelector('.sub-item') && /Errore|non disponibile/.test(b.textContent));
+    const t=vuoto?'':'('+COLL_COUNT[id](b)+')';
+    if(cnt.textContent!==t) cnt.textContent=t;
+  };
+  new MutationObserver(upd).observe(sec,{childList:true,subtree:true});
+  upd();
+}
+
 // ---------- SCHEDA PERSONA ----------
 let CURRENT_PERSON=null, CURRENT_PERSON_OBJ=null;
 // daTeam: aperta dall'elenco membri di un team (CURRENT_TEAM) -> il
@@ -1012,6 +1060,7 @@ async function openPersonCard(id, daTeam){
       <div class="sh"><span class="st">Prenotazioni</span></div>
       <div id="pbook-body"><div class="spinner">Caricamento…</div></div>
     </div>`;
+  el('content').querySelectorAll('.section').forEach(makeCollapsible);
   el('back-btn-top').addEventListener('click', ()=>{ if(teamId) enterTeam(teamId, teamAz); else if(TAB==='professionisti') goTab('professionisti'); else enterCompany(p.company_id); });
   if(canWrite) el('spp-new').addEventListener('click', ()=>openSppModal());
   if(isAdmin && p.tipo==='professionista') el('passign-btn').addEventListener('click', ()=>openProfAssign(id));
@@ -2958,6 +3007,7 @@ async function enterTeam(id, daAzienda){
     ${isAdmin?'<button class="ghost small" id="team-edit-btn">Modifica</button> <button class="ghost small" id="team-assign-btn">Consulenti</button>':''}</div>
     <div class="section"><div class="sh"><span class="st">Membri</span>${canWrite?'<button class="primary small" id="add-member">+ Aggiungi membro</button>':''}</div><div id="team-members-list"><div class="spinner">Caricamento…</div></div></div>
     <div class="section"><div class="sh"><span class="st">Incontri di gruppo</span>${canWrite?'<button class="primary small" id="add-team-meeting">+ Incontro</button>':''}</div><div id="team-meetings-list"><div class="spinner">Caricamento…</div></div></div>`;
+  el('content').querySelectorAll('.section').forEach(makeCollapsible);
   el('back-btn-top').addEventListener('click',()=>{ if(az) enterCompany(az.id); else goTab('team'); });
   if(isAdmin) el('team-assign-btn').addEventListener('click',()=>openTeamAssignModal(id));
   // i team interni stanno solo nella scheda azienda, dove non c'è il Modifica
