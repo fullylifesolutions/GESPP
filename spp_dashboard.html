@@ -83,6 +83,9 @@
   .as-st{font-size:11px;color:var(--ink-soft);min-height:14px;margin:-6px 0 8px;}
   .as-st.ok{color:var(--ok-ink);} .as-st.err{color:var(--danger);}
   .pre{white-space:pre-wrap;}
+  .modal.modal-wide{max-width:860px;}
+  .vw-body{font-size:15px;line-height:1.6;max-height:65vh;overflow-y:auto;margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:7px;overflow-wrap:anywhere;}
+  .vw-sec+.vw-sec{margin-top:14px;} .vw-lab{font-size:12px;color:var(--ink-soft);margin-bottom:2px;}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;}
   .assign-box{background:#f7f9fb;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:6px 0 14px;}
   .assign-box .ttl{font-size:13px;color:var(--ink-soft);margin-bottom:8px;}
@@ -485,6 +488,14 @@
 </div></div>
 
 <!-- MODAL CALENDARIO PRENOTAZIONI -->
+<!-- MODAL VISUALIZZA (sola lettura, larga) -->
+<div class="modal-bg" id="modal-view"><div class="modal modal-wide">
+  <h3 id="vw-title" style="margin-bottom:4px;"></h3>
+  <div id="vw-sub" style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;"></div>
+  <div id="vw-body" class="vw-body"></div>
+  <div class="modal-actions"><button class="ghost" id="vw-edit">Modifica</button><button class="primary" id="vw-close">Chiudi</button></div>
+</div></div>
+
 <div class="modal-bg" id="modal-calendar"><div class="modal">
   <h3 id="mcal-title">Calendario prenotazioni</h3><div id="mcal-msg" class="msg"></div>
   <label>Nome calendario *</label><input type="text" id="cal-nome" placeholder="es. Rossi Srl — Visite">
@@ -1294,10 +1305,16 @@ async function loadCompanyNotes(companyId,canWrite){
       <div style="display:flex;align-items:flex-start;gap:8px;">
         <div class="m" style="flex:1;"><div style="font-weight:600;">${escapeHtml(n.titolo)}</div>
           <div class="d">${fmtDateTime(n.created_at)}${n.autore_nome?' · '+escapeHtml(n.autore_nome):''}${n.updated_at?' · modificata il '+fmtDateTime(n.updated_at):''}</div></div>
+        <button class="ghost small cnote-view" data-id="${n.id}">Visualizza</button>
         ${mia?'<button class="ghost small cnote-edit" data-id="'+n.id+'">Modifica</button> <button class="ghost small danger cnote-del" data-id="'+n.id+'">Elimina</button>':''}
       </div>
       ${n.corpo?`<div style="white-space:pre-wrap;font-size:13px;margin-top:6px;">${escapeHtml(n.corpo)}</div>`:''}
     </div>`; }).join('');
+  box.querySelectorAll('.cnote-view').forEach(b=>b.addEventListener('click',()=>{
+    const n=CNOTES.find(x=>x.id===b.dataset.id), mia=canWrite&&(ME.ruolo==='admin'||n.autore_id===ME.id);
+    openViewer(n.titolo, fmtDateTime(n.created_at)+(n.autore_nome?' · '+n.autore_nome:'')+(n.updated_at?' · modificata il '+fmtDateTime(n.updated_at):''),
+      viewText(n.corpo), mia?()=>openCompanyNoteModal(n.id):null);
+  }));
   box.querySelectorAll('.cnote-edit').forEach(b=>b.addEventListener('click',()=>openCompanyNoteModal(b.dataset.id)));
   box.querySelectorAll('.cnote-del').forEach(b=>b.addEventListener('click',()=>delCompanyNote(b.dataset.id)));
 }
@@ -1396,10 +1413,14 @@ function renderOperatorNotes(){
       <div style="display:flex;align-items:flex-start;gap:8px;">
         <div class="m" style="flex:1;"><div style="font-weight:600;">${escapeHtml(n.titolo)}</div>
           <div class="d">${fmtDateTime(n.created_at)}${n.updated_at?' · modificata il '+fmtDateTime(n.updated_at):''}</div></div>
-        <button class="ghost small onote-edit" data-id="${n.id}">Modifica</button> <button class="ghost small danger onote-del" data-id="${n.id}">Elimina</button>
+        <button class="ghost small onote-view" data-id="${n.id}">Visualizza</button> <button class="ghost small onote-edit" data-id="${n.id}">Modifica</button> <button class="ghost small danger onote-del" data-id="${n.id}">Elimina</button>
       </div>
       ${n.corpo?`<div style="white-space:pre-wrap;font-size:13px;margin-top:6px;">${escapeHtml(n.corpo)}</div>`:''}
     </div>`).join('');
+  box.querySelectorAll('.onote-view').forEach(b=>b.addEventListener('click',()=>{
+    const n=ONOTES.find(x=>x.id===b.dataset.id);
+    openViewer(n.titolo, fmtDateTime(n.created_at)+(n.updated_at?' · modificata il '+fmtDateTime(n.updated_at):''), viewText(n.corpo), ()=>openOperatorNoteModal(n.id));
+  }));
   box.querySelectorAll('.onote-edit').forEach(b=>b.addEventListener('click',()=>openOperatorNoteModal(b.dataset.id)));
   box.querySelectorAll('.onote-del').forEach(b=>b.addEventListener('click',()=>delOperatorNote(b.dataset.id)));
 }
@@ -2314,6 +2335,7 @@ async function loadHealth(personId){
       const notesHtml = notes.length
         ? notes.map(n=>`<div style="display:flex;align-items:center;font-size:12px;color:var(--ink-soft);padding:4px 0 4px 12px;border-left:2px solid var(--line);margin:4px 0 4px 4px;">
             <span class="pre" style="flex:1;">${fmtDate(n.data_nota)} — ${escapeHtml(n.testo)}</span>
+            <button class="ghost small note-view" data-id="${n.id}">Visualizza</button>
             ${canWrite?'<button class="ghost small note-edit" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
         : '';
       return `<div class="sub-item" style="display:block;">
@@ -2338,7 +2360,7 @@ async function loadHealth(personId){
   const generali = SELFREP_ALL.filter(n=>!n.health_record_id);
   diaryActions.innerHTML = canWrite?'<button class="primary small" id="sr-add-gen">+ Nota diario</button>':'';
   diaryBody.innerHTML = generali.length
-    ? generali.map(n=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(n.data_nota)}</div><div class="pre">${escapeHtml(n.testo)}</div></div>${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
+    ? generali.map(n=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(n.data_nota)}</div><div class="pre">${escapeHtml(n.testo)}</div></div><button class="ghost small note-view" data-id="${n.id}">Visualizza</button> ${canWrite?'<button class="ghost small note-edit-g" data-id="'+n.id+'">Modifica</button> <button class="ghost small note-arch-g" data-id="'+n.id+'">Archivia</button>':''}</div>`).join('')
     : `<div class="empty" style="padding:14px;">Nessuna nota di diario.</div>`;
 
   // diritto all'oblio: cancellazione definitiva, solo admin (resta in Dati sanitari)
@@ -2350,6 +2372,11 @@ async function loadHealth(personId){
   }
   body.insertAdjacentHTML('beforeend', oblioHtml);
   if(canWrite && el('sr-add-gen')) el('sr-add-gen').addEventListener('click',()=>openSelfRepModal(personId, null));
+  [body,diaryBody].forEach(box=>box.querySelectorAll('.note-view').forEach(b=>b.addEventListener('click',()=>{
+    const n=SELFREP_ALL.find(x=>x.id===b.dataset.id), p=CURRENT_PERSON_OBJ;
+    openViewer((n.health_record_id?'Nota su patologia':'Nota di diario')+' del '+fmtDate(n.data_nota), p?p.nome+' '+p.cognome:'',
+      viewText(n.testo), canWrite?()=>openSelfRepModal(personId, n.health_record_id, n):null);
+  })));
   if(canWrite) diaryBody.querySelectorAll('.note-arch-g').forEach(b=>b.addEventListener('click',()=>archiveHealth('self_reports',b.dataset.id,personId)));
   if(canWrite) diaryBody.querySelectorAll('.note-edit-g').forEach(b=>b.addEventListener('click',()=>openSelfRepModal(personId, null, SELFREP_ALL.find(x=>x.id===b.dataset.id))));
   if(ME.ruolo==='admin' && el('hr-harddelete')) el('hr-harddelete').addEventListener('click',()=>hardDeleteHealth(personId));
@@ -2368,7 +2395,12 @@ async function loadFamily(personId){
   if(error){ body.innerHTML=`<div class="empty">Errore: ${escapeHtml(error.message)}</div>`; return; }
   FAMILY_ROW=data||{};
   const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
-  if(canWrite){ actions.innerHTML='<button class="ghost small" id="fam-edit">Modifica</button>'; el('fam-edit').addEventListener('click',openFamilyModal); }
+  actions.innerHTML='<button class="ghost small" id="fam-view">Visualizza</button>'+(canWrite?' <button class="ghost small" id="fam-edit">Modifica</button>':'');
+  el('fam-view').addEventListener('click',()=>{ const p=CURRENT_PERSON_OBJ;
+    openViewer('Famiglia', p?p.nome+' '+p.cognome:'',
+      FAMILY_FIELDS.map(([k,lab])=>`<div class="vw-sec"><div class="vw-lab">${lab}</div>${viewText(FAMILY_ROW[k])}</div>`).join(''),
+      canWrite?openFamilyModal:null); });
+  if(canWrite) el('fam-edit').addEventListener('click',openFamilyModal);
   body.innerHTML=FAMILY_FIELDS.map(([k,lab])=>`<div class="sub-item"><div class="m"><div class="d">${lab}</div><div style="white-space:pre-wrap;">${FAMILY_ROW[k]?escapeHtml(FAMILY_ROW[k]):'<span style="color:var(--ink-soft)">—</span>'}</div></div></div>`).join('');
 }
 function openFamilyModal(){
@@ -2402,7 +2434,11 @@ async function loadQuestions(personId){
   QUESTIONS=data||[];
   const canWrite=ME.ruolo==='admin'||ME.ruolo==='consulente';
   if(!QUESTIONS.length){ body.innerHTML=`<div class="empty" style="padding:14px;">Nessuna domanda.${canWrite?' Aggiungila con "+ Domanda".':''}</div>`; return; }
-  body.innerHTML=QUESTIONS.map(q=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(q.data_domanda)}</div><div style="white-space:pre-wrap;">${escapeHtml(q.testo)}</div></div>${canWrite?'<button class="ghost small q-edit" data-id="'+q.id+'">Modifica</button> <button class="ghost small q-arch" data-id="'+q.id+'">Archivia</button>':''}</div>`).join('');
+  body.innerHTML=QUESTIONS.map(q=>`<div class="sub-item"><div class="m" style="flex:1;"><div class="d">${fmtDate(q.data_domanda)}</div><div style="white-space:pre-wrap;">${escapeHtml(q.testo)}</div></div><button class="ghost small q-view" data-id="${q.id}">Visualizza</button> ${canWrite?'<button class="ghost small q-edit" data-id="'+q.id+'">Modifica</button> <button class="ghost small q-arch" data-id="'+q.id+'">Archivia</button>':''}</div>`).join('');
+  body.querySelectorAll('.q-view').forEach(b=>b.addEventListener('click',()=>{
+    const q=QUESTIONS.find(x=>x.id===b.dataset.id), p=CURRENT_PERSON_OBJ;
+    openViewer('Domanda del '+fmtDate(q.data_domanda), p?p.nome+' '+p.cognome:'', viewText(q.testo), canWrite?()=>openQuestionModal(q):null);
+  }));
   if(canWrite){
     body.querySelectorAll('.q-edit').forEach(b=>b.addEventListener('click',()=>openQuestionModal(QUESTIONS.find(q=>q.id===b.dataset.id))));
     body.querySelectorAll('.q-arch').forEach(b=>b.addEventListener('click',()=>archiveQuestion(b.dataset.id)));
@@ -2623,6 +2659,20 @@ async function savePatho(){
   loadHealth(HEALTH_PERSON);
 }
 
+// ---------- VISUALIZZA ----------
+// Rilettura in sola lettura, in una finestra larga, di incontri, note, diario,
+// domande e famiglia. html è già escapato (viewText); onEdit (solo se l'utente
+// può modificare) apre la finestra di modifica al posto di questa.
+let VIEW_EDIT=null;
+function viewText(t){ return t?`<div class="pre">${escapeHtml(t)}</div>`:'<span style="color:var(--ink-soft)">—</span>'; }
+function openViewer(title, sub, html, onEdit){
+  el('vw-title').textContent=title; el('vw-sub').textContent=sub||'';
+  el('vw-body').innerHTML=html; el('vw-body').scrollTop=0;
+  VIEW_EDIT=onEdit||null; el('vw-edit').style.display=onEdit?'':'none';
+  el('modal-view').classList.add('open');
+}
+function closeViewer(){ el('modal-view').classList.remove('open'); }
+
 // ---------- SALVATAGGIO AUTOMATICO ----------
 // Nelle finestre di testo (incontri, incontri di gruppo, note azienda, note
 // operatore, diario, domande, famiglia) il contenuto si salva da solo
@@ -2726,7 +2776,13 @@ async function loadMeetings(personId){
   body.innerHTML=data.map(m=>`<div class="sub-item">
     <div class="m"><div>${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</div>
     <div class="d pre">${escapeHtml(m.sintesi||'—')}</div></div>
+    <button class="ghost small meet-view" data-id="${m.id}">Visualizza</button>
     ${canWrite?'<button class="ghost small meet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger meet-del" data-id="'+m.id+'">Elimina</button>':''}</div>`).join('');
+  body.querySelectorAll('.meet-view').forEach(b=>b.addEventListener('click',()=>{
+    const m=data.find(x=>x.id===b.dataset.id), p=CURRENT_PERSON_OBJ;
+    openViewer('Incontro del '+fmtDateTime(m.data_ora)+(m.durata_min?' · '+m.durata_min+' min':''), p?p.nome+' '+p.cognome:'',
+      viewText(m.sintesi), canWrite?()=>openMeetingModal(m.id):null);
+  }));
   if(canWrite){
     body.querySelectorAll('.meet-edit').forEach(b=>b.addEventListener('click',()=>openMeetingModal(b.dataset.id)));
     body.querySelectorAll('.meet-del').forEach(b=>b.addEventListener('click',()=>delMeeting(b.dataset.id)));
@@ -3043,7 +3099,13 @@ async function loadTeamMeetings(teamId,canWrite){
   box.innerHTML=data.map(m=>`<div class="sub-item">
     <div class="m"><div>${fmtDateTime(m.data_ora)}${m.durata_min?' · '+m.durata_min+' min':''}</div>
     <div class="d pre">${escapeHtml(m.sintesi||'—')}</div></div>
+    <button class="ghost small tmeet-view" data-id="${m.id}">Visualizza</button>
     ${canWrite?'<button class="ghost small tmeet-edit" data-id="'+m.id+'">Modifica</button> <button class="ghost small danger tmeet-del" data-id="'+m.id+'">Elimina</button>':''}</div>`).join('');
+  box.querySelectorAll('.tmeet-view').forEach(b=>b.addEventListener('click',()=>{
+    const m=data.find(x=>x.id===b.dataset.id);
+    openViewer('Incontro di gruppo del '+fmtDateTime(m.data_ora)+(m.durata_min?' · '+m.durata_min+' min':''), CURRENT_TEAM_NOME,
+      viewText(m.sintesi), canWrite?()=>openTeamMeetingModal(m.id):null);
+  }));
   if(canWrite){
     box.querySelectorAll('.tmeet-edit').forEach(b=>b.addEventListener('click',()=>openTeamMeetingModal(b.dataset.id)));
     box.querySelectorAll('.tmeet-del').forEach(b=>b.addEventListener('click',()=>delTeamMeeting(b.dataset.id)));
@@ -3414,6 +3476,10 @@ el('mcal-cancel').addEventListener('click', ()=>{ el('modal-calendar').classList
 el('mcal-save').addEventListener('click', saveCalendar);
 [['modal-company'],['modal-site'],['modal-contact'],['modal-person'],['modal-spp'],['modal-passign'],['modal-consent'],['modal-patho'],['modal-team'],['modal-team-assign'],['modal-calendar']].forEach(([m])=>el(m).addEventListener('click',e=>{ if(e.target===el(m)) closeModalAsk(m); }));
 setupAutosave();
+el('vw-close').addEventListener('click', closeViewer);
+el('vw-edit').addEventListener('click', ()=>{ const f=VIEW_EDIT; closeViewer(); if(f) f(); });
+el('modal-view').addEventListener('click', e=>{ if(e.target===el('modal-view')) closeViewer(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && el('modal-view').classList.contains('open')) closeViewer(); });
 el('modal-team-member').addEventListener('click', e=>{ if(e.target===el('modal-team-member')) closeTeamMemberModal(); });
 
 // ══════════════════════════════════════════════════════════════════════════
